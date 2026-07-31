@@ -4,8 +4,8 @@
  * ==========================================
  */
 const CONFIG = {
-  owner: "nullcpy",
-  repo: "rvb",
+  owner: "m4mental",
+  repo: "my-rvb-builder",
   cacheDuration: 5, // Cache duration in minutes
 
   // App Categories for the top filter buttons (maps filter-btn dataset to keywords)
