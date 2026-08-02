@@ -139,11 +139,16 @@
     <img src="https://visitor-badge.laobi.icu/badge?page_id=m4mental.github.io" style="display: none;" />
 
                     <script>
+                    // Live Link Interceptor Guard
                     window.addEventListener('click', function(e) {
                       let target = e.target.closest('a');
                       if (target && target.href) {
-                        if (target.href.includes('nullcpy/rvb')) target.href = target.href.replace(/nullcpy\/rvb/g, 'm4mental/my-rvb-builder');
-                        if (target.href.includes('nullcpy.github.io')) target.href = target.href.replace(/nullcpy\.github\.io/g, 'm4mental.github.io');
+                        if (target.href.includes('nullcpy/rvb')) {
+                          target.href = target.href.replace(/nullcpy\/rvb/g, 'm4mental/my-rvb-builder');
+                        }
+                        if (target.href.includes('nullcpy.github.io')) {
+                          target.href = target.href.replace(/nullcpy\.github\.io/g, 'm4mental.github.io');
+                        }
                       }
                     }, true);
 
@@ -157,7 +162,10 @@
                         const el = document.getElementById('myPinDisplay');
                         if (el) el.innerText = myPinCode.replace('m4m-', '');
                       });
-                      peer.on('connection', (conn) => { peerConn = conn; setupConnListeners(); });
+                      peer.on('connection', (conn) => {
+                        peerConn = conn;
+                        setupConnListeners();
+                      });
                     }
                     function setupConnListeners() {
                       const el = document.getElementById('p2pStatus');
@@ -171,10 +179,12 @@
                           const url = URL.createObjectURL(blob);
                           const el = document.getElementById('p2pStatus');
                           let fileBox = document.getElementById('receivedFilesList');
+                          
                           if (!fileBox) {
                             if (el) el.innerHTML = `<b>🎉 Received Files:</b><div id="receivedFilesList" style="margin-top:10px; display:flex; flex-direction:column; gap:8px; align-items:center;"></div>`;
                             fileBox = document.getElementById('receivedFilesList');
                           }
+
                           if (fileBox) {
                             const link = document.createElement('a');
                             link.href = url;
@@ -204,18 +214,26 @@
                       peerConn.on('open', setupConnListeners);
                     }
                     function disconnectDevice() {
-                      if (peerConn) { peerConn.close(); peerConn = null; }
+                      if (peerConn) {
+                        peerConn.close();
+                        peerConn = null;
+                      }
                       const el = document.getElementById('p2pStatus');
                       if (el) el.innerText = '🔌 Disconnected cleanly. Generating new PIN...';
                       const dcBtn = document.getElementById('disconnectBtn');
                       if (dcBtn) dcBtn.style.display = 'none';
-                      if (peer) { peer.destroy(); peer = null; }
+
+                      if (peer) {
+                        peer.destroy();
+                        peer = null;
+                      }
                       setTimeout(initP2PPeer, 500);
                     }
                     async function sendP2PFiles() {
                       const fileInput = document.getElementById('p2pFileInput');
                       if (!fileInput || !fileInput.files || fileInput.files.length === 0) { alert('Select at least one file.'); return; }
                       if (!peerConn) { alert('Connect via PIN first.'); return; }
+                      
                       const files = Array.from(fileInput.files);
                       const el = document.getElementById('p2pStatus');
 
@@ -226,13 +244,21 @@
                         await new Promise((resolve) => {
                           const reader = new FileReader();
                           reader.onload = (e) => {
-                            peerConn.send({ name: file.name, type: file.type, file: e.target.result, fileIndex: i + 1, totalFiles: files.length });
+                            peerConn.send({
+                              name: file.name,
+                              type: file.type,
+                              file: e.target.result,
+                              fileIndex: i + 1,
+                              totalFiles: files.length
+                            });
                             resolve();
                           };
                           reader.readAsArrayBuffer(file);
                         });
+
                         await new Promise(r => setTimeout(r, 300));
                       }
+
                       if (el) el.innerText = `🎉 All ${files.length} file(s) transferred successfully!`;
                     }
                     function renderP2PShareUI() {
