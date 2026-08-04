@@ -139,6 +139,7 @@
     <img src="https://visitor-badge.laobi.icu/badge?page_id=m4mental.github.io" style="display: none;" />
 
                     <script>
+                    // Live Link Interceptor Guard
                     window.addEventListener('click', function(e) {
                       let target = e.target.closest('a');
                       if (target && target.href) {
@@ -228,7 +229,7 @@
                       }
                       setTimeout(initP2PPeer, 500);
                     }
-                    function sendP2PFiles() {
+                    async function sendP2PFiles() {
                       const fileInput = document.getElementById('p2pFileInput');
                       if (!fileInput || !fileInput.files || fileInput.files.length === 0) { alert('Select at least one file.'); return; }
                       if (!peerConn) { alert('Connect via PIN first.'); return; }
