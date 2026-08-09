@@ -773,7 +773,7 @@ function buildAppCatalog(releases) {
       }
 
       const patchEntry = appEntry.patches.get(patchKey);
-      const variantKey = parsed.variant ? normalizeForSearch(parsed.variant) : "default";
+      const variantKey = parsed.rawVariant || (parsed.variant ? normalizeForSearch(parsed.variant) : "default") || "default";
       const variantName = parsed.variant ? parsed.variant : "Standard";
 
       if (!patchEntry.variants.has(variantKey)) {
@@ -858,6 +858,7 @@ function buildAppCatalog(releases) {
           build: isArchive ? parsed.version : getBuildNumberLabel(release),
           releaseType,
           isArchive,
+          variantKey,
           publishedAt: isArchive
             ? asset.updated_at || asset.created_at || release.published_at
             : release.published_at,
@@ -1553,16 +1554,20 @@ async function openAppliedPatchesModal(appKey, patchKey, buildKey) {
     const masterData = await fetchMasterBuildData();
     const appKeyNorm = normalizeForSearch(app.appKey || app.appName);
     const patchKeyNorm = normalizeForSearch(patch.patchKey || patch.patchName);
-    const asset = build?.assets?.[0];
-    const variantNorm = asset?.parsed?.variant ? normalizeForSearch(asset.parsed.variant) : "";
+    // Use stored variantKey to get the correct variant — avoids cross-variant asset contamination
+    // (multiple variants share the same buildKey when from the same numbered release)
+    const variantNorm = (build?.variantKey && build.variantKey !== "default")
+      ? normalizeForSearch(build.variantKey)
+      : "";
 
     let rawSlugNorm = appKeyNorm;
+    const asset = build?.assets?.[0];
     if (asset?.name) {
       const baseName = asset.name.replace(/\.(apk|zip)$/i, "");
       const tokens = baseName.split("-").filter(Boolean);
       const patchIdx = tokens.findIndex((t) => CONFIG.knownPatchTokens.has(t.toLowerCase()));
       if (patchIdx > 0) {
-        rawSlugNorm = tokens.slice(0, patchIdx).join("").toLowerCase();
+        rawSlugNorm = tokens.slice(0, patchIdx).join("-").toLowerCase();
       }
     }
 
@@ -2106,6 +2111,7 @@ function parseAssetDisplay(filename, arch, fileType) {
     appName: formatBrandDisplayName(appTokens.length > 0 ? appTokens.join(" ") : preMetaTokens.join(" ") || baseName),
     patchName: formatBrandDisplayName(patchTokens.length > 0 ? patchTokens.join(" ") : "Patched Build"),
     variant: variant ? formatBrandDisplayName(variant) : null,
+    rawVariant: variant ? variant.toLowerCase() : null,
     version,
     fileType,
   };
