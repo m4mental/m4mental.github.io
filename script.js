@@ -696,6 +696,8 @@ function buildAppCatalog(releases) {
     const patchMetaFromRelease = extractPatchInfoFromRelease(release);
 
     (release.assets || []).forEach((asset) => {
+      if (!asset.name || !/\.(apk|zip)$/i.test(asset.name)) return;
+
       const arch = detectArchitecture(asset.name);
       const fileType = getFileType(asset.name);
       const parsed = parseAssetDisplay(asset.name, arch, fileType);
@@ -1534,23 +1536,81 @@ async function openAppliedPatchesModal(appKey, patchKey, buildId) {
     const masterData = await fetchMasterBuildData();
     const appKeyNorm = normalizeForSearch(app.appKey || app.appName);
     const patchKeyNorm = normalizeForSearch(patch.patchKey || patch.patchName);
+    const asset = build?.assets?.[0];
+    const variantNorm = asset?.parsed?.variant ? normalizeForSearch(asset.parsed.variant) : "";
     const targetKey = `${appKeyNorm}-${patchKeyNorm}`;
+    const variantTargetKey = variantNorm ? `${appKeyNorm}-${patchKeyNorm}-${variantNorm}` : targetKey;
+
+    function isPatchEntry(obj) {
+      return obj && typeof obj === "object" && (
+        Array.isArray(obj.applied_patches) || typeof obj.patches === "string" || typeof obj.changelog === "string"
+      );
+    }
+
+    function resolveVersionFromDict(dict, rawVer) {
+      if (!dict || typeof dict !== "object") return null;
+
+      // If this dict IS itself a patch entry (e.g. flat target key with single version), return it
+      if (isPatchEntry(dict)) return dict;
+
+      const keys = Object.keys(dict);
+      if (keys.length === 0) return null;
+
+      if (!rawVer || rawVer === "Version unknown") {
+        // Return first value that looks like a patch entry
+        for (const k of keys) {
+          const candidate = dict[k];
+          if (isPatchEntry(candidate)) return candidate;
+          // Drill one level deeper (engine dict)
+          if (candidate && typeof candidate === "object") {
+            for (const vk of Object.keys(candidate)) {
+              if (isPatchEntry(candidate[vk])) return candidate[vk];
+            }
+          }
+        }
+        return null;
+      }
+
+      const cleanVer = rawVer.toLowerCase().replace(/^v(?=\d)/i, "").trim();
+
+      // 1. Direct match (with and without leading v)
+      for (const candidate of [dict[rawVer], dict[cleanVer], dict[`v${cleanVer}`]]) {
+        if (isPatchEntry(candidate)) return candidate;
+      }
+
+      // 2. Prefix / partial match against keys
+      const matchedKey = keys.find((k) => {
+        const cleanK = k.toLowerCase().replace(/^v(?=\d)/i, "").trim();
+        return cleanK.startsWith(cleanVer) || cleanVer.startsWith(cleanK);
+      });
+      if (matchedKey && isPatchEntry(dict[matchedKey])) return dict[matchedKey];
+
+      // 3. Drill into nested engine dict (e.g. masterData["gboard"] = { morphe: { "ver": {...} } })
+      for (const k of keys) {
+        const sub = dict[k];
+        if (sub && typeof sub === "object" && !isPatchEntry(sub)) {
+          const result = resolveVersionFromDict(sub, rawVer);
+          if (result) return result;
+        }
+      }
+
+      return null;
+    }
 
     const resolved =
-      (masterData[appKeyNorm]?.[patchKeyNorm]?.[build?.version]) ||
-      (masterData[targetKey]?.[build?.version]) ||
-      (masterData[appKeyNorm]?.[patchKeyNorm]?.default) ||
-      (masterData[targetKey]?.default) ||
-      (masterData[appKeyNorm]?.default);
+      resolveVersionFromDict(masterData[variantTargetKey], build?.version) ||
+      resolveVersionFromDict(masterData[appKeyNorm]?.[patchKeyNorm], build?.version) ||
+      resolveVersionFromDict(masterData[targetKey], build?.version) ||
+      resolveVersionFromDict(masterData[appKeyNorm], build?.version);
 
     if (resolved) {
       if (Array.isArray(resolved.applied_patches) && resolved.applied_patches.length > 0) {
         appliedPatches = resolved.applied_patches;
       }
-      if ((!pNames || pNames === patch.patchName) && resolved.patches) {
+      if (resolved.patches) {
         pNames = resolved.patches;
       }
-      if (!clUrl && resolved.changelog) {
+      if (resolved.changelog) {
         clUrl = resolved.changelog;
       }
     }
@@ -1946,7 +2006,7 @@ function parseAssetDisplay(filename, arch, fileType) {
 
   let version = "Version unknown";
   if (versionIndex >= 0) {
-    const versionParts = [tokens[versionIndex]];
+    const versionParts = [tokens[versionIndex].replace(/^v(?=\d)/i, "")];
     for (let i = versionIndex + 1; i < tokens.length; i++) {
       const t = tokens[i].toLowerCase();
       const isArchToken = CONFIG.knownArchs.some((a) => a.split("-").includes(t));
