@@ -1388,14 +1388,45 @@ function updateModalFilterButtons(patch) {
 
   filterContainer.innerHTML = "";
 
-  // Channel group (Stable / Beta)
-  const channelGroup = document.createElement("div");
-  channelGroup.className = "filter-pill-group";
-  channelGroup.innerHTML = `
-    <button class="modal-filter-btn ${modalBuildFilter === "stable" ? "active" : ""}" data-filter="stable" type="button">Stable</button>
-    <button class="modal-filter-btn ${modalBuildFilter === "beta" ? "active" : ""}" data-filter="beta" type="button">Beta</button>
-  `;
-  filterContainer.appendChild(channelGroup);
+  let hasStable = false;
+  let hasBeta = false;
+
+  if (patch.builds) {
+    for (const b of patch.builds) {
+      const matchingAssets = b.assets.filter((a) => {
+        const vKey = a.parsed.rawVariant || (a.parsed.variant ? normalizeForSearch(a.parsed.variant) : "default") || "default";
+        return vKey === modalVariantFilter || modalVariantFilter === "all";
+      });
+
+      if (matchingAssets.length > 0) {
+        if (b.releaseType === "stable") hasStable = true;
+        if (b.releaseType === "beta") hasBeta = true;
+      }
+      if (hasStable && hasBeta) break;
+    }
+  }
+
+  // Auto-switch build filter if the currently selected one has no builds
+  if (!hasStable && modalBuildFilter === "stable" && hasBeta) {
+    modalBuildFilter = "beta";
+  } else if (!hasBeta && modalBuildFilter === "beta" && hasStable) {
+    modalBuildFilter = "stable";
+  }
+
+  let channelHtml = "";
+  if (hasStable) {
+    channelHtml += `<button class="modal-filter-btn ${modalBuildFilter === "stable" ? "active" : ""}" data-filter="stable" type="button">Stable</button>\n`;
+  }
+  if (hasBeta) {
+    channelHtml += `<button class="modal-filter-btn ${modalBuildFilter === "beta" ? "active" : ""}" data-filter="beta" type="button">Beta</button>\n`;
+  }
+
+  if (channelHtml) {
+    const channelGroup = document.createElement("div");
+    channelGroup.className = "filter-pill-group";
+    channelGroup.innerHTML = channelHtml;
+    filterContainer.appendChild(channelGroup);
+  }
 
   // Variant group with divider
   if (patch.variants && patch.variants.length > 0) {
@@ -1433,7 +1464,7 @@ function createPatchModalContent(app, patch, buildFilter = "stable", variantFilt
       .map((b) => ({
         ...b,
         assets: b.assets.filter((a) => {
-          const vKey = a.parsed.variant ? normalizeForSearch(a.parsed.variant) : "default";
+          const vKey = a.parsed.rawVariant || (a.parsed.variant ? normalizeForSearch(a.parsed.variant) : "default") || "default";
           return vKey === variantFilter;
         }),
       }))
@@ -1583,7 +1614,7 @@ async function openAppliedPatchesModal(appKey, patchKey, buildKey) {
     }
 
     // Direct O(1) version & tag dictionary lookup (no dead engine loops)
-    function resolveVersionFromDict(dict, rawVer, specificTag, isArchive) {
+    function resolveVersionFromDict(dict, rawVer, specificTag, isArchive, preferredReleaseType) {
       if (!dict || typeof dict !== "object") return null;
       if (isPatchEntry(dict)) return dict;
 
@@ -1603,6 +1634,19 @@ async function openAppliedPatchesModal(appKey, patchKey, buildKey) {
           if (!isNaN(na) && !isNaN(nb)) return nb - na;
           return b.localeCompare(a);
         });
+        
+        // If we have a preferred release type (for archives), try to find a matching tag first
+        if (preferredReleaseType) {
+          for (const tagKey of tagKeys) {
+            if (tagToReleaseType[tagKey] === preferredReleaseType && isPatchEntry(candidate[tagKey])) {
+              return candidate[tagKey];
+            }
+          }
+          // Strict matching: do not fallback to another channel's patches
+          return null;
+        }
+
+        // Only fallback to the latest available if no specific type was requested
         for (const tagKey of tagKeys) {
           if (isPatchEntry(candidate[tagKey])) return candidate[tagKey];
         }
@@ -1614,19 +1658,29 @@ async function openAppliedPatchesModal(appKey, patchKey, buildKey) {
     const cleanBuildVer = (build?.version || "").replace(/^v(?=\d)/i, "").trim();
     const versionsToTry = cleanBuildVer ? [cleanBuildVer, `v${cleanBuildVer}`] : [];
 
+    // Map build tag to releaseType to prefer the right patches for archive builds
+    const tagToReleaseType = {};
+    if (patch && patch.builds) {
+      for (const b of patch.builds.values()) {
+        if (b.build && b.releaseType) {
+          tagToReleaseType[b.build] = b.releaseType;
+        }
+      }
+    }
+
     let resolved = null;
     if (variantNorm) {
       for (const ver of versionsToTry) {
         resolved =
-          resolveVersionFromDict(masterData[rawVariantTargetKey], ver, specificTag, isArchiveBuild) ||
-          resolveVersionFromDict(masterData[variantTargetKey], ver, specificTag, isArchiveBuild);
+          resolveVersionFromDict(masterData[rawVariantTargetKey], ver, specificTag, isArchiveBuild, build?.releaseType) ||
+          resolveVersionFromDict(masterData[variantTargetKey], ver, specificTag, isArchiveBuild, build?.releaseType);
         if (resolved) break;
       }
     } else {
       for (const ver of versionsToTry) {
         resolved =
-          resolveVersionFromDict(masterData[rawTargetKey], ver, specificTag, isArchiveBuild) ||
-          resolveVersionFromDict(masterData[targetKey], ver, specificTag, isArchiveBuild);
+          resolveVersionFromDict(masterData[rawTargetKey], ver, specificTag, isArchiveBuild, build?.releaseType) ||
+          resolveVersionFromDict(masterData[targetKey], ver, specificTag, isArchiveBuild, build?.releaseType);
         if (resolved) break;
       }
     }
@@ -1746,7 +1800,6 @@ function createObtainiumInstructions(app, patch) {
   }
 
   const mainPackageId = getAppPackageId(app, patch, modalVariantFilter || "default");
-  const mainSafeId = mainPackageId || `${CONFIG.owner}_${app?.appKey || "app"}_${patch?.patchKey || "patch"}`.replace(/[^a-zA-Z0-9_]/g, "_");
   const mainLabel = `${app?.appName || "App"} (${patch?.patchName || "Patch"})`;
   const mainAdditionalSettings = { apkFilterRegEx: regexPattern };
   if (modalBuildFilter === "beta") {
@@ -1754,13 +1807,13 @@ function createObtainiumInstructions(app, patch) {
   }
 
   const mainConfig = {
-    id: mainSafeId,
+    id: mainPackageId,
     name: mainLabel,
     author: CONFIG.owner,
     url: repoUrl,
     additionalSettings: JSON.stringify(mainAdditionalSettings),
   };
-  const mainOneClickUrl = `https://apps.obtainium.imranr.dev/redirect?r=${encodeURIComponent("obtainium://app/" + JSON.stringify(mainConfig))}`;
+  const mainOneClickUrl = mainPackageId ? `https://apps.obtainium.imranr.dev/redirect?r=${encodeURIComponent("obtainium://app/" + JSON.stringify(mainConfig))}` : null;
 
   let step4Content = "";
   if (patch && patch.variants && patch.variants.length > 1) {
@@ -1770,7 +1823,6 @@ function createObtainiumInstructions(app, patch) {
         : `^${appNameNorm}-${patchNameNorm}-${v.variantKey}.*\\.apk$`;
       const vLabel = `${app.appName} (${patch.patchName} - ${v.variantName})`;
       const vPackageId = getAppPackageId(app, patch, v.variantKey);
-      const vSafeId = vPackageId || `${CONFIG.owner}_${app.appKey}_${patch.patchKey}_${v.variantKey}_${index}`.replace(/[^a-zA-Z0-9_]/g, "_");
 
       const vAdditionalSettings = { apkFilterRegEx: vRegex };
       if (modalBuildFilter === "beta") {
@@ -1778,13 +1830,13 @@ function createObtainiumInstructions(app, patch) {
       }
 
       const vConfig = {
-        id: vSafeId,
+        id: vPackageId,
         name: vLabel,
         author: CONFIG.owner,
         url: repoUrl,
         additionalSettings: JSON.stringify(vAdditionalSettings),
       };
-      const vOneClickUrl = `https://apps.obtainium.imranr.dev/redirect?r=${encodeURIComponent("obtainium://app/" + JSON.stringify(vConfig))}`;
+      const vOneClickUrl = vPackageId ? `https://apps.obtainium.imranr.dev/redirect?r=${encodeURIComponent("obtainium://app/" + JSON.stringify(vConfig))}` : null;
 
       return `
         <div style="margin-top: 8px;">
@@ -1793,7 +1845,7 @@ function createObtainiumInstructions(app, patch) {
           </div>
           <div class="instruction-code">
             <code>${escapeHtml(vRegex)}</code>
-            <a href="${vOneClickUrl}" class="obtainium-add-btn" target="_blank" rel="noopener noreferrer">Add to Obtainium</a>
+            ${vOneClickUrl ? `<a href="${vOneClickUrl}" class="obtainium-add-btn" target="_blank" rel="noopener noreferrer">Add to Obtainium</a>` : ''}
             <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(vRegex)}', 'Regex copied!')" type="button">Copy</button>
           </div>
         </div>
@@ -1809,7 +1861,7 @@ function createObtainiumInstructions(app, patch) {
     step4Content = `
       <div class="instruction-code" style="margin-top: 6px;">
         <code>${escapeHtml(regexPattern)}</code>
-        <a href="${mainOneClickUrl}" class="obtainium-add-btn" target="_blank" rel="noopener noreferrer">Add to Obtainium</a>
+        ${mainOneClickUrl ? `<a href="${mainOneClickUrl}" class="obtainium-add-btn" target="_blank" rel="noopener noreferrer">Add to Obtainium</a>` : ''}
         <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(regexPattern)}', 'Regex copied!')" type="button">Copy</button>
       </div>
     `;
@@ -1818,7 +1870,7 @@ function createObtainiumInstructions(app, patch) {
   return `
     <div class="obtainium-instructions">
     <div style="margin-bottom: 12px;">
-    Make sure you have <strong>Obtainium</strong> installed, if not install from <a href="${obtainiumLatestUrl}" target="_blank" rel="noopener noreferrer">GitHub</a>. Press the <strong>Add to Obtainium</strong> button to add the app(s) automatically or you can follow the instructions below to add them manually:
+      Ensure that you have <strong>Obtainium</strong> installed (available on <a href="${obtainiumLatestUrl}" target="_blank" rel="noopener noreferrer">GitHub</a>). Use the <strong>Add to Obtainium</strong> button for a quick setup if it's available, or follow the steps below to add the app manually:
     </div>
       <ol>
         <li>Open Obtainium on your device.</li>
