@@ -10,9 +10,9 @@ ARCH_SUFFIXES_REGEX = re.compile(
     r"(?:-(arm64-v8a|armeabi-v7a|arm64|aarch64|arm-v7a|arm32|x86_64|x86|universal|all))+$",
     re.IGNORECASE
 )
-VERSION_PREFIX_REGEX = re.compile(r"^v(?=\d)", re.IGNORECASE)
+VERSION_PREFIX_REGEX = re.compile(r"^v(?=[a-z0-9])", re.IGNORECASE)
 ASSET_FILENAME_REGEX = re.compile(
-    r"^([a-z0-9-]+?)(?:-module)?-v([0-9][a-zA-Z0-9._-]*?)(?:-(?:arm64-v8a|armeabi-v7a|x86_64|x86|universal|all))?\.(?:apk|zip)$"
+    r"^([a-z0-9-]+)-v([a-zA-Z0-9._-]+?)(?:-(?:arm64-v8a|armeabi-v7a|x86_64|x86|universal|all))?\.(?:apk|zip)$"
 )
 
 def load_script_js_config(filepath="script.js"):
@@ -96,6 +96,9 @@ def parse_asset_filename(filename):
         return None
     
     target_part, version = match.groups()
+    if target_part.endswith("-module"):
+        target_part = target_part[:-7]
+        
     app_key, engine = parse_target_key(target_part)
     return {
         "target": target_part,
