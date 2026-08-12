@@ -404,6 +404,7 @@ function applyTheme(theme) {
 // Modal Generic Controller
 function showModal(modalEl) {
   if (!modalEl) return;
+  modalEl.classList.remove("closing");
   modalEl.classList.add("open");
   modalEl.setAttribute("aria-hidden", "false");
   document.body.classList.add("modal-open");
@@ -411,11 +412,21 @@ function showModal(modalEl) {
 
 function hideModal(modalEl) {
   if (!modalEl) return;
-  modalEl.classList.remove("open");
-  modalEl.setAttribute("aria-hidden", "true");
-  if (!document.querySelector(".modal-overlay.open")) {
-    document.body.classList.remove("modal-open");
+  modalEl.classList.add("closing");
+  
+  // Prevent accessibility warnings by removing focus from modal elements before hiding
+  if (document.activeElement && modalEl.contains(document.activeElement)) {
+    document.activeElement.blur();
   }
+
+  setTimeout(() => {
+    modalEl.classList.remove("open");
+    modalEl.classList.remove("closing");
+    modalEl.setAttribute("aria-hidden", "true");
+    if (!document.querySelector(".modal-overlay.open:not(.closing)")) {
+      document.body.classList.remove("modal-open");
+    }
+  }, 180);
 }
 
 // Event Listeners
@@ -507,12 +518,6 @@ function setupEventListeners() {
   // App Cards & Modal Delegate Click
   if (DOM.builds) {
     DOM.builds.addEventListener("click", (e) => {
-      const collapsedCard = e.target.closest(".app-card:not([open])");
-      if (collapsedCard && !e.target.closest(".app-card-summary")) {
-        collapsedCard.open = true;
-        return;
-      }
-
       const trigger = e.target.closest(".channel-box-btn");
       if (trigger) {
         e.stopPropagation();
@@ -522,6 +527,33 @@ function setupEventListeners() {
           trigger.dataset.channel || "all",
           trigger.dataset.variant || "all"
         );
+        return;
+      }
+
+      const card = e.target.closest(".app-card");
+      if (card) {
+        const isSummaryClick = e.target.closest(".app-card-summary");
+        const isOpen = card.classList.contains("open");
+        
+        if (isSummaryClick || !isOpen) {
+          if (!isOpen) {
+            document.querySelectorAll(".app-card.open").forEach(c => {
+              if (c !== card) c.classList.remove("open");
+            });
+            card.classList.add("open");
+            
+            setTimeout(() => {
+              const rect = card.getBoundingClientRect();
+              if (rect.top < 20 || rect.height > window.innerHeight) {
+                window.scrollBy({ top: rect.top - 20, behavior: "smooth" });
+              } else if (rect.bottom > window.innerHeight) {
+                window.scrollBy({ top: rect.bottom - window.innerHeight + 20, behavior: "smooth" });
+              }
+            }, 360);
+          } else {
+            card.classList.remove("open");
+          }
+        }
       }
     });
   }
@@ -529,6 +561,15 @@ function setupEventListeners() {
   // Downloads Modal Filter Delegate
   if (DOM.patchModal) {
     DOM.patchModal.addEventListener("click", (e) => {
+      const modalHeader = e.target.closest(".modal-build-header");
+      if (modalHeader) {
+        const card = modalHeader.closest(".modal-build-card");
+        if (card) {
+          card.classList.toggle("open");
+        }
+        return;
+      }
+
       const filterBtn = e.target.closest(".modal-filter-btn");
       if (filterBtn && !filterBtn.disabled) {
         const filterType = filterBtn.dataset.filter;
@@ -598,6 +639,8 @@ function setupEventListeners() {
       closeObtainiumModal();
     }
   });
+
+
 
   // Infinite Scroll Observer
   const sentinel = document.createElement("div");
@@ -1148,8 +1191,8 @@ function createAppCard(app) {
       : "";
 
   return `
-    <details class="build-card app-card">
-      <summary class="app-card-summary">
+    <div class="build-card app-card">
+      <div class="app-card-summary" role="button" tabindex="0">
         <div class="app-title-group">
           <div class="app-name">${escapeHtml(app.appName)}</div>
         </div>
@@ -1159,14 +1202,18 @@ function createAppCard(app) {
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </div>
-      </summary>
-      <div class="app-card-body">
-        ${noticesMarkup}
-        <div class="patches-list">
-          ${patchesMarkup}
+      </div>
+      <div class="app-card-body-wrapper">
+        <div class="app-card-body">
+          <div class="app-card-body-inner">
+            ${noticesMarkup}
+            <div class="patches-list">
+              ${patchesMarkup}
+            </div>
+          </div>
         </div>
       </div>
-    </details>
+    </div>
   `;
 }
 
@@ -1519,8 +1566,8 @@ function createModalBuildMarkup(app, patch, build, openByDefault = false) {
   `;
 
   return `
-    <details class="modal-build-card" ${openByDefault ? "open" : ""}>
-      <summary class="modal-build-header">
+    <div class="modal-build-card ${openByDefault ? "open" : ""}">
+      <div class="modal-build-header" role="button" tabindex="0">
         <div class="modal-build-header-left">
           <div class="modal-build-title">${titleText}</div>
           <div class="modal-build-date">${formatDate(build.publishedAt)}${build.isArchive ? "" : ` • ${escapeHtml(build.version)}`}</div>
@@ -1530,12 +1577,16 @@ function createModalBuildMarkup(app, patch, build, openByDefault = false) {
             ${build.isArchive ? `<span class="release-badge archive">Archive</span>` : ""}
           </span>
         </div>
-      </summary>
-      <div class="modal-build-downloads">
-        ${downloadsMarkup}
-        ${patchInfoBanner}
       </div>
-    </details>
+      <div class="app-card-body-wrapper">
+        <div class="modal-build-downloads">
+          <div class="modal-build-downloads-inner">
+            ${downloadsMarkup}
+            ${patchInfoBanner}
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
