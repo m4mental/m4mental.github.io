@@ -482,21 +482,30 @@ function setupEventListeners() {
 
     DOM.searchInput.addEventListener("focus", (e) => {
       if (window.innerWidth <= 768) {
-        const searchBox = e.target.closest(".search-box") || e.target;
-        const y = searchBox.getBoundingClientRect().top + window.scrollY - 15;
-        window.scrollTo({ top: y, behavior: "smooth" });
+        // Wait for the virtual keyboard to finish animating (usually ~300ms)
+        // Otherwise, the programmatic smooth scroll conflicts with the keyboard scroll,
+        // permanently breaking hit-testing areas on mobile Chrome/Safari.
+        setTimeout(() => {
+          const searchBox = e.target.closest(".search-box") || e.target;
+          const y = searchBox.getBoundingClientRect().top + window.scrollY - 85;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }, 300);
       }
     });
   }
 
   if (DOM.searchClearBtn && DOM.searchInput) {
-    DOM.searchClearBtn.addEventListener("click", () => {
+    const handleClear = (e) => {
+      e.preventDefault(); // Prevent input blur, keeping keyboard open and stopping layout shifts
+      if (DOM.searchInput.value === "") return;
       DOM.searchInput.value = "";
       searchTerm = "";
       syncClearBtn();
       syncUrlParams();
       filterAndRenderReleases();
-    });
+    };
+    DOM.searchClearBtn.addEventListener("pointerdown", handleClear);
+    DOM.searchClearBtn.addEventListener("click", handleClear);
   }
 
   // Secondary Category Filter Buttons
@@ -1856,14 +1865,21 @@ function createObtainiumInstructions(app, patch) {
   const repoUrl = `https://github.com/${CONFIG.owner}/${CONFIG.repo}`;
   const obtainiumLatestUrl = "https://github.com/ImranR98/Obtainium/releases/latest";
 
-  const appNameNorm = normalizeForSearch(app?.appName || "app");
-  const patchNameNorm = normalizeForSearch(patch?.patchName || "patch");
+  const sampleAsset = patch?.builds?.[0]?.assets?.[0] || app?.patches?.[0]?.builds?.[0]?.assets?.[0];
+  let rawSlug = normalizeForSearch(app?.appName || "app");
+  let rawPatch = normalizeForSearch(patch?.patchName || "patch");
+
+  if (sampleAsset?.name) {
+    const parsedAsset = parseAssetDisplay(sampleAsset.name);
+    if (parsedAsset.rawAppSlug) rawSlug = parsedAsset.rawAppSlug;
+    if (parsedAsset.rawPatchToken) rawPatch = parsedAsset.rawPatchToken;
+  }
 
   const isSpecificVariant = modalVariantFilter && modalVariantFilter !== "default" && modalVariantFilter !== "all";
 
-  let regexPattern = `^${appNameNorm}-${patchNameNorm}.*\\.apk$`;
+  let regexPattern = `^${rawSlug}-${rawPatch}.*\\.apk$`;
   if (isSpecificVariant) {
-    regexPattern = `^${appNameNorm}-${patchNameNorm}-${modalVariantFilter}.*\\.apk$`;
+    regexPattern = `^${rawSlug}-${rawPatch}-${modalVariantFilter}.*\\.apk$`;
   }
 
   const mainPackageId = getAppPackageId(app, patch, modalVariantFilter || "default");
@@ -1886,8 +1902,8 @@ function createObtainiumInstructions(app, patch) {
   if (patch && patch.variants && patch.variants.length > 1) {
     const examples = patch.variants.map((v, index) => {
       const vRegex = v.variantKey === "default"
-        ? `^${appNameNorm}-${patchNameNorm}.*\\.apk$`
-        : `^${appNameNorm}-${patchNameNorm}-${v.variantKey}.*\\.apk$`;
+        ? `^${rawSlug}-${rawPatch}.*\\.apk$`
+        : `^${rawSlug}-${rawPatch}-${v.variantKey}.*\\.apk$`;
       const vLabel = `${app.appName} (${patch.patchName} - ${v.variantName})`;
       const vPackageId = getAppPackageId(app, patch, v.variantKey);
 
@@ -1907,8 +1923,9 @@ function createObtainiumInstructions(app, patch) {
 
       return `
         <div style="margin-top: 8px;">
-          <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">
-            ${escapeHtml(vLabel)}:
+          <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: flex; flex-direction: column;">
+            <span>${escapeHtml(vLabel)}</span>
+            ${vPackageId ? `<span style="font-family: monospace; opacity: 0.8; font-weight: normal; margin-top: 2px; cursor: pointer; width: fit-content; word-break: break-all;" onclick="copyToClipboard('${escapeHtml(vPackageId)}', 'Package ID copied!')" title="Click to copy Package ID">${escapeHtml(vPackageId)}</span>` : ''}
           </div>
           <div class="instruction-code">
             <code>${escapeHtml(vRegex)}</code>
@@ -1926,10 +1943,17 @@ function createObtainiumInstructions(app, patch) {
     `;
   } else {
     step4Content = `
-      <div class="instruction-code" style="margin-top: 6px;">
-        <code>${escapeHtml(regexPattern)}</code>
-        ${mainOneClickUrl ? `<a href="${mainOneClickUrl}" class="obtainium-add-btn" target="_blank" rel="noopener noreferrer">Add to Obtainium</a>` : ''}
-        <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(regexPattern)}', 'Regex copied!')" type="button">Copy</button>
+      <div style="margin-top: 6px;">
+        ${mainPackageId ? `
+        <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: flex; flex-direction: column;">
+          <span style="font-family: monospace; opacity: 0.8; font-weight: normal; cursor: pointer; width: fit-content; word-break: break-all;" onclick="copyToClipboard('${escapeHtml(mainPackageId)}', 'Package ID copied!')" title="Click to copy Package ID">${escapeHtml(mainPackageId)}</span>
+        </div>
+        ` : ''}
+        <div class="instruction-code">
+          <code>${escapeHtml(regexPattern)}</code>
+          ${mainOneClickUrl ? `<a href="${mainOneClickUrl}" class="obtainium-add-btn" target="_blank" rel="noopener noreferrer">Add to Obtainium</a>` : ''}
+          <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(regexPattern)}', 'Regex copied!')" type="button">Copy</button>
+        </div>
       </div>
     `;
   }

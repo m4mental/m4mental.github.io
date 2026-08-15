@@ -142,6 +142,7 @@ textarea {
     flex-direction: column;
     align-items: flex-end;
     gap: 12px;
+    pointer-events: none; /* Let clicks pass through the invisible flex container */
 }
 
 .action-buttons {
@@ -162,7 +163,23 @@ textarea {
     pointer-events: auto;
 }
 
-#menuBtn,
+#menuBtn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px var(--shadow-sm);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 10;
+    pointer-events: auto; /* Re-enable clicks for the button */
+}
+
 #themeBtn,
 #issueBtn,
 #announcementBtn {
@@ -328,6 +345,8 @@ main {
 .search-icon {
     position: absolute;
     left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
     color: var(--text-muted);
     pointer-events: none;
 }
@@ -338,6 +357,9 @@ main {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
     color: var(--text-primary);
     font-size: 1.05rem;
     box-shadow: var(--shadow);
@@ -356,9 +378,10 @@ main {
 
 #searchClearBtn {
     position: absolute;
-    right: 14px;
-    width: 28px;
-    height: 28px;
+    right: 12px;
+    top: 50%;
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-full);
     border: none;
     background: var(--bg-tertiary);
@@ -367,16 +390,23 @@ main {
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 1.4rem;
+    line-height: 1;
     opacity: 0;
     pointer-events: none;
-    transform: scale(0.8);
+    transform: translateY(-50%) scale(0.8);
     transition: all 0.2s ease;
+    z-index: 5;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .search-input-wrap.has-value #searchClearBtn {
     opacity: 1;
     pointer-events: auto;
-    transform: scale(1);
+    transform: translateY(-50%) scale(1);
 }@media (hover: hover) {
 
 
