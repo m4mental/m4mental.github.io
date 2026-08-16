@@ -4815,6 +4815,18 @@
           "Spoof signature ",
           "Unlock custom time picker "
         ]
+      },
+      "260235": {
+        "patches": "hxreborn/patches-1.6.0.mpp",
+        "changelog": "https://github.com/hxreborn/morphe-patches/releases/tag/v1.6.0",
+        "applied_patches": [
+          "AMOLED dark theme ",
+          "Hide upgrade upselling ",
+          "Remove 'Sent from' signature ",
+          "Remove free accounts limit ",
+          "Spoof signature ",
+          "Unlock custom time picker "
+        ]
       }
     }
   },
@@ -4839,6 +4851,14 @@
       "260232": {
         "patches": "hxreborn/patches-1.5.1.mpp",
         "changelog": "https://github.com/hxreborn/morphe-patches/releases/tag/v1.5.1",
+        "applied_patches": [
+          "AMOLED dark theme ",
+          "Unlock premium "
+        ]
+      },
+      "260235": {
+        "patches": "hxreborn/patches-1.6.0.mpp",
+        "changelog": "https://github.com/hxreborn/morphe-patches/releases/tag/v1.6.0",
         "applied_patches": [
           "AMOLED dark theme ",
           "Unlock premium "
@@ -5294,6 +5314,28 @@
         "changelog": "https://github.com/arandomhooman/hoomans-morphe-patches/releases/tag/v1.47.0",
         "applied_patches": [
           "Unlock PRO "
+        ]
+      }
+    }
+  },
+  "backdrops-morphe": {
+    "6.1.2": {
+      "260236": {
+        "patches": "BholeyKaBhakt/patches-2.12.0.mpp",
+        "changelog": "https://github.com/BholeyKaBhakt/revanced-patches-xtra/releases/tag/v2.12.0",
+        "applied_patches": [
+          "Unlock Premium "
+        ]
+      }
+    }
+  },
+  "byair-morphe": {
+    "2.38.2": {
+      "260236": {
+        "patches": "franticg33k/patches-1.3.7.mpp",
+        "changelog": "https://github.com/franticg33k/morphe-patches/releases/tag/v1.3.7",
+        "applied_patches": [
+          "Enable Pro "
         ]
       }
     }
