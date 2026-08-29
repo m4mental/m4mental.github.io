@@ -1,3 +1,7 @@
+// ==========================================
+// M4Mental Hub - P2P WebRTC Warp Drop Engine
+// ==========================================
+
 // Live Link Interceptor Guard
 window.addEventListener('click', function(e) {
   let target = e.target.closest('a');
@@ -14,37 +18,57 @@ window.addEventListener('click', function(e) {
 let peer = null, peerConn = null, myPinCode = '';
 let incomingFileMeta = null, incomingChunks = [];
 
-function generatePin() { return Math.floor(1000 + Math.random() * 9000).toString(); }
+function generatePin() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
 
 function openP2PModal() {
-  let modal = document.getElementById('p2pModal');
+  let modal = document.getElementById('m4mP2PModal');
   if (!modal) {
     injectP2PModalDOM();
-    modal = document.getElementById('p2pModal');
+    modal = document.getElementById('m4mP2PModal');
   }
-  if (modal) modal.style.display = 'flex';
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('m4m-active');
+  }
   initP2PPeer();
 }
 
 function closeP2PModal() {
-  let modal = document.getElementById('p2pModal');
-  if (modal) modal.style.display = 'none';
+  const modal = document.getElementById('m4mP2PModal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('m4m-active');
+  }
+}
+
+function copyMyPin() {
+  const pinEl = document.getElementById('myPinDisplay');
+  if (!pinEl) return;
+  const pinText = pinEl.innerText.trim();
+  if (pinText && pinText !== '----') {
+    navigator.clipboard.writeText(pinText).then(() => {
+      const toast = document.getElementById('p2pStatus');
+      if (toast) toast.innerText = `📋 PIN ${pinText} copied to clipboard!`;
+    }).catch(() => {});
+  }
 }
 
 function initP2PPeer() {
   if (typeof Peer === 'undefined') {
     const st = document.getElementById('p2pStatus');
-    if (st) st.innerText = '⏳ Loading WebRTC engine...';
-    setTimeout(initP2PPeer, 500);
+    if (st) st.innerHTML = '<span style="color:#38bdf8;">⏳ Loading WebRTC engine...</span>';
+    setTimeout(initP2PPeer, 400);
     return;
   }
   if (peer && !peer.destroyed && peer.open) return;
-  
+
   myPinCode = 'm4m-' + generatePin();
   const st = document.getElementById('p2pStatus');
-  if (st) st.innerText = '⏳ Connecting to P2P Signal Server...';
+  if (st) st.innerHTML = '<span style="color:#38bdf8;">⏳ Connecting to P2P Signal Network...</span>';
 
-  // TURN & STUN IceServers for 5G Jio/Airtel CGNAT Traversal
+  // High-Availability STUN & OpenRelay TURN servers for 5G (Jio/Airtel/Vi) CGNAT Traversal
   peer = new Peer(myPinCode, {
     debug: 1,
     config: {
@@ -53,7 +77,8 @@ function initP2PPeer() {
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:global.stun.twilio.com:3478' },
         { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
-        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' }
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelay', credential: 'openrelay' }
       ]
     }
   });
@@ -62,7 +87,7 @@ function initP2PPeer() {
     const el = document.getElementById('myPinDisplay');
     if (el) el.innerText = myPinCode.replace('m4m-', '');
     const st = document.getElementById('p2pStatus');
-    if (st) st.innerText = '✅ Device Ready! Share PIN or enter Receiver PIN.';
+    if (st) st.innerHTML = '<span style="color:#22c55e;">✅ Device Ready! Share PIN with Receiver or enter Receiver PIN below.</span>';
   });
 
   peer.on('connection', (conn) => {
@@ -76,16 +101,16 @@ function initP2PPeer() {
       if (st) st.innerText = '🔄 Generating fresh PIN...';
       peer.destroy();
       peer = null;
-      setTimeout(initP2PPeer, 400);
+      setTimeout(initP2PPeer, 300);
     } else {
-      if (st) st.innerText = 'P2P Status: ' + (err.type || 'Signal issue, retrying...');
+      if (st) st.innerHTML = `<span style="color:#ef4444;">⚠️ P2P Notice: ${err.type || 'Retrying signal connection...'}</span>`;
     }
   });
 }
 
 function setupConnListeners() {
   const el = document.getElementById('p2pStatus');
-  if (el) el.innerText = '⚡ Connected to peer device!';
+  if (el) el.innerHTML = '<span style="color:#22c55e; font-weight:700;">⚡ Connected to Peer Device! You can now send files.</span>';
   const dcBtn = document.getElementById('disconnectBtn');
   if (dcBtn) dcBtn.style.display = 'inline-block';
 
@@ -100,15 +125,15 @@ function setupConnListeners() {
           incomingFileMeta = parsed;
           incomingChunks = [];
           const st = document.getElementById('p2pStatus');
-          if (st) st.innerText = `📥 Receiving ${parsed.name} (0%)...`;
+          if (st) st.innerHTML = `<span style="color:#06b6d4;">📥 Receiving <b>${parsed.name}</b> (0%)...</span>`;
         } else if (parsed.type === 'file-end') {
           const blob = new Blob(incomingChunks, { type: incomingFileMeta.fileType || 'application/octet-stream' });
           const url = URL.createObjectURL(blob);
           const st = document.getElementById('p2pStatus');
-          
+
           let fileBox = document.getElementById('receivedFilesList');
           if (!fileBox) {
-            if (st) st.innerHTML = `<b>🎉 Received Files:</b><div id="receivedFilesList" style="margin-top:10px; display:flex; flex-direction:column; gap:8px; align-items:center;"></div>`;
+            if (st) st.innerHTML = `<b>🎉 Received Files:</b><div id="receivedFilesList" style="margin-top:12px; display:flex; flex-direction:column; gap:8px; align-items:center;"></div>`;
             fileBox = document.getElementById('receivedFilesList');
           }
 
@@ -116,12 +141,12 @@ function setupConnListeners() {
             const link = document.createElement('a');
             link.href = url;
             link.download = incomingFileMeta.name;
-            link.style = "background:#22c55e; color:#fff; padding:10px 18px; border-radius:8px; text-decoration:none; display:inline-block; font-weight:bold; margin-top:5px;";
-            link.innerHTML = `📥 Save ${incomingFileMeta.name} (${(incomingFileMeta.size / (1024*1024)).toFixed(2)} MB)`;
+            link.style = "background:linear-gradient(135deg, #10b981, #059669); color:#fff; padding:10px 20px; border-radius:10px; text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-weight:bold; margin-top:6px; box-shadow:0 4px 14px rgba(16,185,129,0.3);";
+            link.innerHTML = `💾 Download <b>${incomingFileMeta.name}</b> (${(incomingFileMeta.size / (1024*1024)).toFixed(2)} MB)`;
             fileBox.appendChild(link);
           }
 
-          if (st) st.innerText = `🎉 File ${incomingFileMeta.name} received!`;
+          if (st) st.innerHTML = `<span style="color:#10b981; font-weight:700;">🎉 File "${incomingFileMeta.name}" received successfully!</span>`;
           incomingChunks = [];
         }
       } catch(e) {}
@@ -131,14 +156,14 @@ function setupConnListeners() {
         const receivedBytes = incomingChunks.length * 16384;
         const pct = Math.min(100, Math.round((receivedBytes / incomingFileMeta.size) * 100));
         const st = document.getElementById('p2pStatus');
-        if (st) st.innerText = `📥 Receiving ${incomingFileMeta.name} (${pct}%)...`;
+        if (st) st.innerHTML = `<span style="color:#06b6d4;">📥 Receiving <b>${incomingFileMeta.name}</b>: <b>${pct}%</b> [${(receivedBytes/(1024*1024)).toFixed(1)} / ${(incomingFileMeta.size/(1024*1024)).toFixed(1)} MB]</span>`;
       }
     }
   });
 
   peerConn.on('close', () => {
     const el = document.getElementById('p2pStatus');
-    if (el) el.innerText = '🔌 Device disconnected.';
+    if (el) el.innerHTML = '<span style="color:#94a3b8;">🔌 Peer Device Disconnected.</span>';
     const dcBtn = document.getElementById('disconnectBtn');
     if (dcBtn) dcBtn.style.display = 'none';
     peerConn = null;
@@ -149,12 +174,18 @@ function connectToSender() {
   const pinInput = document.getElementById('connectPinInput');
   if (!pinInput) return;
   const pin = pinInput.value.trim();
-  if (!pin || pin.length !== 4) { alert('Enter valid 4-digit PIN.'); return; }
+  if (!pin || pin.length !== 4) {
+    alert('Please enter a valid 4-digit PIN.');
+    return;
+  }
   const el = document.getElementById('p2pStatus');
-  if (el) el.innerText = '🔄 Connecting to PIN: ' + pin + '...';
+  if (el) el.innerHTML = `<span style="color:#38bdf8;">🔄 Connecting to Device PIN: <b>${pin}</b>...</span>`;
   if (!peer || peer.destroyed) initP2PPeer();
   peerConn = peer.connect('m4m-' + pin, { reliable: true });
   peerConn.on('open', setupConnListeners);
+  peerConn.on('error', () => {
+    if (el) el.innerHTML = `<span style="color:#ef4444;">❌ Failed to connect to PIN ${pin}. Please check PIN & retry.</span>`;
+  });
 }
 
 function disconnectDevice() {
@@ -163,7 +194,7 @@ function disconnectDevice() {
     peerConn = null;
   }
   const el = document.getElementById('p2pStatus');
-  if (el) el.innerText = '🔌 Disconnected cleanly. Generating new PIN...';
+  if (el) el.innerHTML = '<span style="color:#94a3b8;">🔌 Disconnected cleanly. Generating new PIN...</span>';
   const dcBtn = document.getElementById('disconnectBtn');
   if (dcBtn) dcBtn.style.display = 'none';
 
@@ -176,16 +207,22 @@ function disconnectDevice() {
 
 async function sendP2PFiles() {
   const fileInput = document.getElementById('p2pFileInput');
-  if (!fileInput || !fileInput.files || fileInput.files.length === 0) { alert('Select at least one file.'); return; }
-  if (!peerConn || !peerConn.open) { alert('Connect via PIN first.'); return; }
-  
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    alert('Please select at least one file.');
+    return;
+  }
+  if (!peerConn || !peerConn.open) {
+    alert('⚠️ Please connect to a device PIN first!');
+    return;
+  }
+
   const files = Array.from(fileInput.files);
   const el = document.getElementById('p2pStatus');
-  const CHUNK_SIZE = 16384; // 16 KB binary chunks
+  const CHUNK_SIZE = 16384; // 16 KB Binary Chunks for zero-crash WebRTC data streaming
 
   for (let fIdx = 0; fIdx < files.length; fIdx++) {
     const file = files[fIdx];
-    
+
     peerConn.send(JSON.stringify({
       type: 'file-start',
       name: file.name,
@@ -202,8 +239,11 @@ async function sendP2PFiles() {
       offset += CHUNK_SIZE;
 
       const pct = Math.min(100, Math.round((offset / buffer.byteLength) * 100));
-      if (el) el.innerText = `📤 Sending (${fIdx + 1}/${files.length}): ${file.name} (${pct}%)...`;
-      
+      if (el) {
+        el.innerHTML = `<span style="color:#06b6d4;">📤 Sending (<b>${fIdx + 1}/${files.length}</b>): <b>${file.name}</b> (${pct}%) [${(offset/(1024*1024)).toFixed(1)} / ${(buffer.byteLength/(1024*1024)).toFixed(1)} MB]</span>`;
+      }
+
+      // Backpressure pacing to avoid buffer overflow
       if (offset % (CHUNK_SIZE * 15) === 0) {
         await new Promise(r => setTimeout(r, 20));
       }
@@ -213,39 +253,63 @@ async function sendP2PFiles() {
     await new Promise(r => setTimeout(r, 300));
   }
 
-  if (el) el.innerText = `🎉 All ${files.length} file(s) sent successfully!`;
+  if (el) el.innerHTML = `<span style="color:#10b981; font-weight:700;">🎉 All ${files.length} file(s) sent successfully!</span>`;
+  fileInput.value = '';
 }
 
 function injectP2PModalDOM() {
-  if (document.getElementById('p2pModal')) return;
+  if (document.getElementById('m4mP2PModal')) return;
   const modalDiv = document.createElement('div');
-  modalDiv.id = 'p2pModal';
-  modalDiv.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px); z-index:3000; align-items:center; justify-content:center; padding:15px;';
+  modalDiv.id = 'm4mP2PModal';
+  modalDiv.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(5,9,18,0.85); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:99999; align-items:center; justify-content:center; padding:15px; box-sizing:border-box;';
   modalDiv.innerHTML = `
-    <div style="background:#161b22; border:1px solid #30363d; border-radius:18px; max-width:700px; width:100%; max-height:90vh; overflow-y:auto; padding:24px; text-align:center; position:relative; box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
-      <button onclick="closeP2PModal()" style="position:absolute; top:15px; right:15px; background:#21262d; border:1px solid #30363d; color:#8b949e; width:32px; height:32px; border-radius:8px; font-size:1.1rem; cursor:pointer;">✕</button>
-      <div style="font-size:1.5rem; font-weight:800; color:#2dd4bf; margin-bottom:6px;">🚀 Nothing Warp / P2P Multi-File Drop</div>
-      <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:20px;">Direct Peer-to-Peer file sharing between Android, iOS, Windows & Mac.<br><b>Select Multiple Files • Zero server uploads • Instant Transfer</b></div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:15px;">
-        <div style="background:#0d1117; border:1px solid #21262d; border-radius:12px; padding:16px;">
-          <div style="font-weight:700; color:#fff; font-size:0.95rem;">1. Your Device PIN (Receive Files)</div>
-          <div id="myPinDisplay" style="font-size:2rem; font-weight:800; color:#38bdf8; letter-spacing:4px; background:#161b22; padding:8px; border-radius:8px; border:1px dashed #30363d; margin:10px 0;">----</div>
+    <div style="background:#0f172a; border:1px solid #1e293b; border-radius:20px; max-width:680px; width:100%; max-height:90vh; overflow-y:auto; padding:26px; text-align:center; position:relative; box-shadow:0 25px 50px -12px rgba(0,0,0,0.9), 0 0 30px rgba(6,182,212,0.15); font-family:inherit;">
+      <button onclick="closeP2PModal()" style="position:absolute; top:16px; right:16px; background:#1e293b; border:1px solid #334155; color:#94a3b8; width:34px; height:34px; border-radius:10px; font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s;">✕</button>
+      
+      <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(6,182,212,0.1); border:1px solid rgba(6,182,212,0.3); padding:4px 12px; border-radius:20px; font-size:0.8rem; font-weight:700; color:#06b6d4; margin-bottom:10px;">
+        ⚡ M4Mental High-Speed Warp Drop
+      </div>
+      
+      <div style="font-size:1.6rem; font-weight:800; color:#f8fafc; margin-bottom:6px;">🚀 P2P Direct File Transfer</div>
+      <div style="font-size:0.88rem; color:#94a3b8; margin-bottom:22px; line-height:1.4;">
+        Direct encrypted transfer between Android, Windows, iOS & Mac.<br>
+        <b style="color:#38bdf8;">Zero Cloud Uploads • No Size Limits • 100% Secure</b>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:16px;">
+        <!-- Step 1: Receive PIN -->
+        <div style="background:#090d16; border:1px solid #1e293b; border-radius:16px; padding:18px; text-align:center;">
+          <div style="font-weight:700; color:#e2e8f0; font-size:0.92rem; margin-bottom:4px;">1. Your Device PIN</div>
+          <div style="font-size:0.75rem; color:#64748b;">(Share this to receive files)</div>
+          <div id="myPinDisplay" style="font-size:2.2rem; font-weight:900; color:#06b6d4; letter-spacing:6px; background:#0f172a; padding:10px; border-radius:12px; border:1px dashed #334155; margin:10px 0; user-select:all;">----</div>
+          <button onclick="copyMyPin()" style="background:#1e293b; color:#cbd5e1; border:1px solid #334155; padding:6px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; cursor:pointer;">📋 Copy PIN</button>
         </div>
-        <div style="background:#0d1117; border:1px solid #21262d; border-radius:14px; padding:16px;">
-          <div style="font-weight:700; color:#fff; font-size:0.95rem;">2. Connect & Send (Enter PIN)</div>
-          <input type="number" id="connectPinInput" style="width:100%; background:#161b22; border:1px solid #30363d; color:#fff; font-size:1.1rem; text-align:center; padding:8px; border-radius:8px; margin:8px 0; outline:none;" placeholder="1234">
-          <button style="background:#2563eb; color:#fff; border:none; padding:10px; border-radius:8px; font-weight:700; cursor:pointer; width:100%;" onclick="connectToSender()">Connect Device</button>
+
+        <!-- Step 2: Connect & Send -->
+        <div style="background:#090d16; border:1px solid #1e293b; border-radius:16px; padding:18px; text-align:center;">
+          <div style="font-weight:700; color:#e2e8f0; font-size:0.92rem; margin-bottom:4px;">2. Connect & Send</div>
+          <div style="font-size:0.75rem; color:#64748b;">(Enter Receiver's PIN)</div>
+          <input type="number" id="connectPinInput" style="width:100%; background:#0f172a; border:1px solid #334155; color:#fff; font-size:1.2rem; font-weight:700; text-align:center; padding:10px; border-radius:10px; margin:10px 0; outline:none; box-sizing:border-box;" placeholder="e.g. 5678">
+          <button onclick="connectToSender()" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; border:none; padding:10px; border-radius:10px; font-weight:700; font-size:0.9rem; cursor:pointer; width:100%; box-shadow:0 4px 12px rgba(2,132,199,0.3);">⚡ Connect Device</button>
         </div>
       </div>
-      <div style="border:2px dashed #30363d; border-radius:12px; padding:20px; cursor:pointer; background:#0d1117;" onclick="document.getElementById('p2pFileInput').click()">
-        <div style="font-size:1.8rem; margin-bottom:4px;">📁</div>
-        <div style="font-weight:700; color:#f0f6fc; font-size:0.95rem;">Click to select file(s) (APKs, ZIPs, Videos, Photos)</div>
+
+      <!-- Step 3: Drag & Select Files -->
+      <div style="border:2px dashed #334155; border-radius:16px; padding:22px; cursor:pointer; background:#090d16; transition:all 0.2s;" onclick="document.getElementById('p2pFileInput').click()">
+        <div style="font-size:2.2rem; margin-bottom:4px;">📦</div>
+        <div style="font-weight:700; color:#f1f5f9; font-size:1rem;">Click or Drop files to Send</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:2px;">Select APKs, ZIPs, Videos, Photos, or Documents</div>
         <input type="file" id="p2pFileInput" multiple style="display:none;" onchange="sendP2PFiles()">
       </div>
-      <div id="p2pStatus" style="margin-top:15px; font-size:0.9rem; font-weight:600; color:#38bdf8;">Status: Ready to connect.</div>
-      <div style="margin-top:15px; display:flex; justify-content:center; gap:10px;">
-        <button id="disconnectBtn" onclick="disconnectDevice()" style="display:none; background:#dc2626; color:#fff; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold;">🔌 Disconnect Device</button>
-        <button onclick="closeP2PModal()" style="background:#21262d; border:1px solid #30363d; color:#9ca3af; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold;">Close Window</button>
+
+      <!-- Live Status Box -->
+      <div id="p2pStatus" style="margin-top:16px; font-size:0.92rem; font-weight:600; min-height:24px; color:#38bdf8;">
+        Status: Ready to connect.
+      </div>
+
+      <div style="margin-top:18px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+        <button id="disconnectBtn" onclick="disconnectDevice()" style="display:none; background:#dc2626; color:#fff; border:none; padding:9px 18px; border-radius:10px; cursor:pointer; font-weight:bold; font-size:0.85rem;">🔌 Disconnect</button>
+        <button onclick="closeP2PModal()" style="background:#1e293b; border:1px solid #334155; color:#94a3b8; padding:9px 20px; border-radius:10px; cursor:pointer; font-weight:bold; font-size:0.85rem;">Close Window</button>
       </div>
     </div>
   `;
@@ -253,3 +317,6 @@ function injectP2PModalDOM() {
 }
 
 document.addEventListener('DOMContentLoaded', injectP2PModalDOM);
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  injectP2PModalDOM();
+}

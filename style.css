@@ -11,7 +11,7 @@
     /* Buttons on blue/green bg: dark text works on light colors, white on dark */
     --btn-on-accent: #0d1117;
 
-    /* m4mental store logo: blue #58a6ff → green #3fb950 */
+    /* M4Mental Hub logo: blue #58a6ff → green #3fb950 */
     --accent: #58a6ff;
     /* logo blue — primary CTA, links, filters */
     --accent-glow: rgba(88, 166, 255, 0.18);
