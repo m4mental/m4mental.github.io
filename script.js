@@ -18,7 +18,7 @@ const CONFIG = {
   },
 
   // Words ignored in the dynamic app filters (must be lowercase)
-  sharedAppWordStoplist: new Set(["messenger", "document", "reader", "keyboard", "browser"]),
+  sharedAppWordStoplist: new Set(["messenger", "document", "reader", "keyboard", "browser", "editor", "video"]),
 
   // Known tokens indicating a patch name starts (must be lowercase)
   knownPatchTokens: new Set(["revanced", "morphe", "anddea", "rvx", "xposed", "instafel"]),
@@ -117,7 +117,8 @@ const CONFIG = {
     sendfilestotv: "Send Files to TV",
     bluetoothkeyboardandmouse: "Bluetooth Keyboard & Mouse",
     swiftkeyboard: "Microsoft SwiftKey AI Keyboard",
-    capcut: "CapCut: Photo & Video Editor"
+    capcut: "CapCut: Photo & Video Editor",
+    chesscom: "Chess.com"
   },
 
   // Map app slugs to true Android Package IDs for Obtainium
@@ -148,6 +149,7 @@ const CONFIG = {
     caloriecounter: "com.fatsecret.android",
     calm: "com.calm.android",
     camscanner: "com.intsig.camscanner",
+    chesscom: "com.chess",
     capcutphotovideoeditor: "com.lemon.lvoverseas",
     cricbuzz: "com.cricbuzz.android",
     cryptomator: "org.cryptomator",
