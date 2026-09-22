@@ -132,6 +132,9 @@ function getObtainiumAppLabel(appName, brandName, variant, subVariant) {
 
 // State
 let cachedFullCatalog = [];
+let cachedPatchSets = []; // Shared top-level appliedPatches table (schema v2 dedup)
+let cachedChangelogSets = []; // Shared top-level changelogs table (schema v2 dedup)
+let cachedPatchSourceSets = []; // Shared top-level patchSources table (schema v2 dedup)
 let searchTerm = "";
 let appCategoryFilter = "all";
 let sortMode = "recent"; // "recent" | "popular" | "name"
@@ -353,6 +356,7 @@ function setupEventListeners() {
             document.querySelectorAll(".app-card.open").forEach(c => {
               if (c !== card) c.classList.remove("open");
             });
+            ensureAppCardBody(card);
             card.classList.add("open");
 
             setTimeout(() => {
@@ -534,6 +538,11 @@ async function loadReleases() {
     const data = await dataResp.json();
 
     cachedFullCatalog = Array.isArray(data.apps) ? data.apps : (Array.isArray(data) ? data : []);
+    cachedPatchSets = Array.isArray(data.patchSets) ? data.patchSets : [];
+    cachedChangelogSets = Array.isArray(data.changelogSets) ? data.changelogSets : [];
+    cachedPatchSourceSets = Array.isArray(data.patchSourceSets) ? data.patchSourceSets : [];
+    // Warm the normalized search index once so the first keystroke is instant.
+    cachedFullCatalog.forEach(getSI);
 
     if (DOM.loading) DOM.loading.style.display = "none";
     updateLastUpdateTimestamp(data.updated_at);
@@ -598,25 +607,19 @@ function updateAppFilterButtons() {
 }
 
 function applyCategoryFilter(apps) {
-  if (CONFIG.appCategories[appCategoryFilter]) {
-    return apps.filter((app) => {
-      const name = normalizeForSearch(app.appName);
-      const key = normalizeForSearch(app.appKey);
-      const nameWithPlus = normalizeForSearch((app.appName || "").replace(/\+/g, "plus"));
-      const keywords = CONFIG.appCategories[appCategoryFilter];
-      const includes = keywords.filter((k) => !k.startsWith("!"));
-      const excludes = keywords.filter((k) => k.startsWith("!")).map((k) => k.slice(1));
-      const isIncluded = includes.some(
-        (keyword) => name.includes(keyword) || key.includes(keyword) || nameWithPlus.includes(keyword)
-      );
-      const isExcluded = excludes.some(
-        (keyword) => name.includes(keyword) || key.includes(keyword) || nameWithPlus.includes(keyword)
-      );
-      return isIncluded && !isExcluded;
-    });
-  }
+  const keywords = CONFIG.appCategories[appCategoryFilter];
+  if (!keywords) return apps;
 
-  return apps;
+  const includes = keywords.filter((k) => !k.startsWith("!"));
+  const excludes = keywords.filter((k) => k.startsWith("!")).map((k) => k.slice(1));
+
+  return apps.filter((app) => {
+    const si = getSI(app);
+    const hit = (kw) => si.name.includes(kw) || si.key.includes(kw) || si.namePlus.includes(kw);
+    const isIncluded = includes.some(hit);
+    const isExcluded = excludes.some(hit);
+    return isIncluded && !isExcluded;
+  });
 }
 
 // O(1) Instant Property Comparisons
@@ -644,12 +647,50 @@ function filterCatalogBySearch(catalog, query) {
     .map((item) => item.app);
 }
 
+// ---- Precomputed search index -------------------------------------------
+// Normalization (regex strip + word splitting + per-brand/variant tables) is
+// computed once per app at load time and cached on the app object as `_si`,
+// so live search/typing only performs cheap substring scans instead of
+// re-normalizing the entire catalog on every keystroke.
+function precomputeAppSearchData(app) {
+  return {
+    name: normalizeForSearch(app.appName),
+    key: normalizeForSearch(app.appKey),
+    namePlus: normalizeForSearch((app.appName || "").replace(/\+/g, "plus")),
+    words: (app.appName || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean),
+    brands: (app.brands || []).map((b) => ({
+      n: normalizeForSearch(b.brandName || b.patchName),
+      vs: (b.variants || []).map((v) => ({
+        v: v.variant ? normalizeForSearch(v.variant) : null,
+        s: v.subVariant ? normalizeForSearch(v.subVariant) : null,
+        p: v.packageName ? normalizeForSearch(v.packageName) : null,
+      })),
+    })),
+  };
+}
+
+function getSI(app) {
+  return app._si || (app._si = precomputeAppSearchData(app));
+}
+
+// Category names / include-keywords are static (from CONFIG), so normalize them once.
+let categorySearchIndex = null;
+function getCategoryIndex() {
+  if (categorySearchIndex) return categorySearchIndex;
+  categorySearchIndex = Object.entries(CONFIG.appCategories || {}).map(([catName, keywords]) => ({
+    nameNorm: normalizeForSearch(catName),
+    includes: keywords.filter((k) => !k.startsWith("!")),
+  }));
+  return categorySearchIndex;
+}
+
 function getAppSearchScore(app, query) {
   const q = normalizeForSearch(query);
   if (!q) return Infinity;
 
-  const appName = normalizeForSearch(app.appName);
-  const appKey = normalizeForSearch(app.appKey);
+  const si = getSI(app);
+  const appName = si.name;
+  const appKey = si.key;
 
   // 1. Exact match
   if (appName === q || appKey === q) return 0;
@@ -658,7 +699,7 @@ function getAppSearchScore(app, query) {
   if (appName.startsWith(q) || appKey.startsWith(q)) return 1;
 
   // 3. Word match on app name
-  const appWords = (app.appName || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const appWords = si.words;
   if (appWords.some((w) => w === q)) return 2;
   if (appWords.some((w) => w.startsWith(q))) return 3;
 
@@ -666,22 +707,19 @@ function getAppSearchScore(app, query) {
   if (appName.includes(q) || appKey.includes(q)) return 4;
 
   // 5. Match Brand, Variant, Sub-Variant, or Package Name
-  const brands = app.brands || [];
-  for (const b of brands) {
-    if (normalizeForSearch(b.brandName || b.patchName).includes(q)) return 5;
-    for (const v of (b.variants || [])) {
-      if (v.variant && normalizeForSearch(v.variant).includes(q)) return 6;
-      if (v.subVariant && normalizeForSearch(v.subVariant).includes(q)) return 6;
-      if (v.packageName && normalizeForSearch(v.packageName).includes(q)) return 7;
+  for (const b of si.brands) {
+    if (b.n.includes(q)) return 5;
+    for (const v of b.vs) {
+      if (v.v && v.v.includes(q)) return 6;
+      if (v.s && v.s.includes(q)) return 6;
+      if (v.p && v.p.includes(q)) return 7;
     }
   }
 
   // 6. Match Category names or matching category keywords
-  for (const [catName, keywords] of Object.entries(CONFIG.appCategories || {})) {
-    if (normalizeForSearch(catName).includes(q)) {
-      const includes = keywords.filter((k) => !k.startsWith("!"));
-      const nameWithPlus = normalizeForSearch((app.appName || "").replace(/\+/g, "plus"));
-      if (includes.some((kw) => appName.includes(kw) || appKey.includes(kw) || nameWithPlus.includes(kw))) {
+  for (const cat of getCategoryIndex()) {
+    if (cat.nameNorm.includes(q)) {
+      if (cat.includes.some((kw) => appName.includes(kw) || appKey.includes(kw) || si.namePlus.includes(kw))) {
         return 5;
       }
     }
@@ -700,11 +738,40 @@ function renderAppCards(apps) {
     return;
   }
 
-  DOM.builds.innerHTML = apps.map((app) => createAppCard(app)).join("");
+  DOM.builds.innerHTML = apps.map((app, index) => createAppCard(app, index)).join("");
 }
 
-// Create App Card Markup
-function createAppCard(app) {
+// Create App Card shell (summary only). The heavy brand/variant body is built
+// lazily on first expand (see ensureAppCardBody) so the initial DOM stays small
+// -- 118 collapsed summaries instead of 118 fully-expanded trees.
+function createAppCard(app, index) {
+  const totalDownloads = app.totalDownloads || 0;
+  const dlBadge = `<span class="patch-stat-badge" title="${totalDownloads.toLocaleString()} Total Downloads">📥 ${formatCompactNumber(totalDownloads)}</span>`;
+
+  return `
+    <div class="build-card app-card" data-app-index="${index}">
+      <div class="app-card-summary" role="button" tabindex="0">
+        <div class="app-title-group">
+          <div class="app-name">${escapeHtml(app.appName)}</div>
+        </div>
+        <div class="app-badge-group">
+          ${dlBadge}
+          <svg class="app-card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div class="app-card-body-wrapper">
+        <div class="app-card-body">
+          <div class="app-card-body-inner"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Build the expandable body content (notices + brand/variant matrix) on demand.
+function buildAppCardBody(app) {
   const toTimestamp = (val) => (typeof val === "number" ? val : Date.parse(val) || 0);
   let brands = [...(app.brands || [])];
   if (sortMode === "popular") {
@@ -729,34 +796,25 @@ function createAppCard(app) {
     }
   });
 
-  const totalDownloads = app.totalDownloads || 0;
-  const dlBadge = `<span class="patch-stat-badge" title="${totalDownloads.toLocaleString()} Total Downloads">📥 ${formatCompactNumber(totalDownloads)}</span>`;
-
   return `
-    <div class="build-card app-card">
-      <div class="app-card-summary" role="button" tabindex="0">
-        <div class="app-title-group">
-          <div class="app-name">${escapeHtml(app.appName)}</div>
-        </div>
-        <div class="app-badge-group">
-          ${dlBadge}
-          <svg class="app-card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
-      </div>
-      <div class="app-card-body-wrapper">
-        <div class="app-card-body">
-          <div class="app-card-body-inner">
-            ${noticesMarkup}
-            <div class="brands-list">
-              ${brandsMarkup}
-            </div>
-          </div>
-        </div>
-      </div>
+    ${noticesMarkup}
+    <div class="brands-list">
+      ${brandsMarkup}
     </div>
   `;
+}
+
+// Populate a card's body the first time it is expanded, then mark it loaded.
+function ensureAppCardBody(card) {
+  if (card.dataset.bodyLoaded === "1") return;
+  const app = currentAppCatalog[Number(card.dataset.appIndex)];
+  const inner = card.querySelector(".app-card-body-inner");
+  if (app && inner) {
+    inner.innerHTML = buildAppCardBody(app);
+    // Force layout so the collapse->expand transition animates from 0 height.
+    void card.offsetHeight;
+  }
+  card.dataset.bodyLoaded = "1";
 }
 
 function getNoticeInlineStyles(notice) {
@@ -844,6 +902,29 @@ function createNoticeMarkup(notice) {
   `;
 }
 
+// Resolve a variant's channel pointer into display fields. data.json stores
+// only the referenced build's id (schema v2, emitted by rebuild_catalog.py),
+// which is looked up in brand.builds by (variant, subVariant, releaseType, build).
+function resolveChannelPointer(brand, variant, channel) {
+  const ptr = variant[channel === "beta" ? "latestBeta" : "latestStable"];
+  if (!ptr) return null;
+  const ref = String(ptr);
+  const found = (brand.builds || []).find(
+    (b) =>
+      (b.variant || null) === (variant.variant || null) &&
+      (b.subVariant || null) === (variant.subVariant || null) &&
+      b.releaseType === channel &&
+      String(b.build) === ref
+  );
+  if (!found) return null;
+  return {
+    version: found.version,
+    build: found.build,
+    publishedAt: found.publishedAt,
+    isArchiveFallback: !!found.isArchive,
+  };
+}
+
 // Create Brand Entry Markup with Multi-Channel Variant Matrix
 function createBrandMarkup(app, brand) {
   const builds = brand.builds || [];
@@ -871,7 +952,8 @@ function createBrandMarkup(app, brand) {
       const subVarAttr = escapeHtml(variant.subVariant || "");
       const brandKey = escapeHtml(brand.brandKey || "");
 
-      if (variant.latestStable) {
+      const stablePtr = resolveChannelPointer(brand, variant, "stable");
+      if (stablePtr) {
         channelBoxes.push(`
           <button class="channel-box-btn stable" 
                   data-app-key="${app.appKey}" 
@@ -883,15 +965,16 @@ function createBrandMarkup(app, brand) {
                   title="Open Stable builds for ${escapeHtml(vLabel)}">
             <div class="channel-box-top">
               <span class="channel-tag stable">Stable</span>
-              <span class="channel-date">${formatDate(variant.latestStable.publishedAt)}</span>
+              <span class="channel-date">${formatDate(stablePtr.publishedAt)}</span>
             </div>
-            <span class="channel-version">${escapeHtml(variant.latestStable.version)}</span>
-            <span class="channel-build-num">${variant.latestStable.isArchiveFallback ? "Archive" : `Build ${escapeHtml(variant.latestStable.build)}`}</span>
+            <span class="channel-version">${escapeHtml(stablePtr.version)}</span>
+            <span class="channel-build-num">${stablePtr.isArchiveFallback ? "Archive" : `Build ${escapeHtml(stablePtr.build)}`}</span>
           </button>
         `);
       }
 
-      if (variant.latestBeta) {
+      const betaPtr = resolveChannelPointer(brand, variant, "beta");
+      if (betaPtr) {
         channelBoxes.push(`
           <button class="channel-box-btn beta" 
                   data-app-key="${app.appKey}" 
@@ -903,10 +986,10 @@ function createBrandMarkup(app, brand) {
                   title="Open Beta builds for ${escapeHtml(vLabel)}">
             <div class="channel-box-top">
               <span class="channel-tag beta">Beta</span>
-              <span class="channel-date">${formatDate(variant.latestBeta.publishedAt)}</span>
+              <span class="channel-date">${formatDate(betaPtr.publishedAt)}</span>
             </div>
-            <span class="channel-version">${escapeHtml(variant.latestBeta.version)}</span>
-            <span class="channel-build-num">${variant.latestBeta.isArchiveFallback ? "Archive" : `Build ${escapeHtml(variant.latestBeta.build)}`}</span>
+            <span class="channel-version">${escapeHtml(betaPtr.version)}</span>
+            <span class="channel-build-num">${betaPtr.isArchiveFallback ? "Archive" : `Build ${escapeHtml(betaPtr.build)}`}</span>
           </button>
         `);
       }
@@ -1202,7 +1285,7 @@ function createModalBuildMarkup(app, brand, build, openByDefault = false) {
         <div class="download-btn ${arch}">
           <div class="asset-left">
             <span class="asset-title">${escapeHtml(app.appName)}</span>
-            <span class="asset-subtitle">${escapeHtml(build.version || "Latest")} • ${escapeHtml(asset.fileType)}</span>
+            <span class="asset-subtitle">${escapeHtml(build.version || "Latest")} • ${escapeHtml(getFileType(asset.name))}</span>
           </div>
           <div class="asset-right">
             <span class="btn-text">${sizeStr} • 📥 ${downloads}</span>
@@ -1218,7 +1301,7 @@ function createModalBuildMarkup(app, brand, build, openByDefault = false) {
   const varAttr = escapeHtml(build.variant || "");
   const subVarAttr = escapeHtml(build.subVariant || "");
   const buildAttr = escapeHtml(build.build || "");
-  const releaseIdAttr = escapeHtml(build.releaseId || "");
+  const releaseIdAttr = escapeHtml(build.releaseId || build.build || "");
   const patchInfoBanner = `
     <div class="patch-info-actions">
       <button class="patch-applied-btn" 
@@ -1322,9 +1405,9 @@ function openAppliedPatchesModal(appKey, brandKey, buildId, variant = null, subV
     DOM.appliedPatchesTitle.textContent = `${app.appName} (${brand.brandName})${variantSuffix}`;
   }
 
-  let appliedPatches = Array.isArray(build?.appliedPatches) && build.appliedPatches.length > 0 ? build.appliedPatches : null;
-  const allPatches = build?.patchSources || [];
-  const allChangelogs = build?.changelogs || [];
+  let appliedPatches = getBuildAppliedPatches(build);
+  const allPatches = getBuildPatchSources(build);
+  const allChangelogs = getBuildChangelogs(build);
 
   const patchNamesList = Array.isArray(allPatches)
     ? allPatches
@@ -1353,6 +1436,35 @@ function openAppliedPatchesModal(appKey, brandKey, buildId, variant = null, subV
   if (DOM.patchSearchInput) {
     DOM.patchSearchInput.value = "";
   }
+}
+
+// Resolve a build's applied-patches list from the deduped patchSetRef ->
+// top-level patchSets table (schema v2, emitted by rebuild_catalog.py).
+function getBuildAppliedPatches(build) {
+  if (!build || !Number.isInteger(build.patchSetRef)) return null;
+  const set = cachedPatchSets[build.patchSetRef];
+  return Array.isArray(set) && set.length > 0 ? set : null;
+}
+
+// Resolve a build's changelogs / patchSources from the shared top-level tables
+// (schema v2 dedup), falling back to any legacy inline array so the client
+// renders correctly both before and after a catalog rebuild.
+function _resolveSetRef(ref, table, inline) {
+  if (Number.isInteger(ref)) {
+    const set = table[ref];
+    if (Array.isArray(set)) return set;
+  }
+  return Array.isArray(inline) ? inline : [];
+}
+
+function getBuildChangelogs(build) {
+  if (!build) return [];
+  return _resolveSetRef(build.changelogRef, cachedChangelogSets, build.changelogs);
+}
+
+function getBuildPatchSources(build) {
+  if (!build) return [];
+  return _resolveSetRef(build.patchSourceRef, cachedPatchSourceSets, build.patchSources);
 }
 
 function filterAppliedPatchesList(query) {

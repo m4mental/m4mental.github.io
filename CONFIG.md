@@ -22,9 +22,25 @@ The catalog uses Schema v2. All legacy baggage (such as artificial composite key
 {
   "version": 2,
   "updated_at": "2026-09-08T03:30:00.000Z",
+  "patchSets": [ ... ],
+  "changelogSets": [ ... ],
+  "patchSourceSets": [ ... ],
   "apps": [ ... ]
 }
 ```
+
+### Shared list tables (`patchSets` / `changelogSets` / `patchSourceSets`)
+Applied-patch names, changelog URLs and patch-source slugs repeat heavily across
+builds, so **identical lists are stored once** in a top-level table and each build
+references the entry by integer index (`patchSetRef` / `changelogRef` /
+`patchSourceRef`) instead of inlining its own copy.
+```json
+[
+  ["Unlock Premium", "Hide Ads", "Remove Tracking"],
+  ["Theme ENABLER", "Custom Branding"]
+]
+```
+> Dedup is keyed on the **ordered** list, so builds with genuinely different lists still get distinct entries — only byte-identical repeats collapse (no data loss). An **empty list is omitted entirely** (the build simply carries no ref). The client resolves each ref via `getBuildAppliedPatches()` / `getBuildChangelogs()` / `getBuildPatchSources()`.
 
 ### App Object (`apps[i]`)
 Each application in the catalog contains:
@@ -58,8 +74,7 @@ Models a distinct functional or packaging stream:
 - **`subVariant`** (`string | null`): Packaging variant (e.g. `"clone"`, `"alt"`). Standard builds use `null`.
 - **`packageName`** (`string`): Target Android package name (e.g. `"com.google.android.youtube"`).
 - **`apkFilter`** (`string`): Regular expression used for asset filtering (e.g. in Obtainium).
-- **`latestStable` / `latestBeta`** (`object | null`): Channel pointer objects storing:
-  - `version`, `build`, `publishedAt`, `releaseId`, `releaseUrl`, `isArchiveFallback`.
+- **`latestStable` / `latestBeta`** (`string | null`): Channel pointer storing **only the referenced build's `build` id** (or `null` when the channel has no build). The client resolves `version` / `publishedAt` / `isArchiveFallback` by looking the id up in the brand's `builds` array (matching `variant` + `subVariant` + `releaseType` + `build`), so these fields are no longer duplicated per pointer. This is the **only** shape the client reads; a pointer written as an inline object will not resolve.
 
 ```json
 {
@@ -67,14 +82,7 @@ Models a distinct functional or packaging stream:
   "subVariant": "clone",
   "packageName": "com.amazon.amazonvideo.livingroom",
   "apkFilter": "^primevideo-morphe-androidtv-clone-v.*\\.apk$",
-  "latestStable": {
-    "version": "3.0.380",
-    "build": "380576727",
-    "publishedAt": "2026-09-08T02:00:00.000Z",
-    "releaseId": "380576727",
-    "releaseUrl": "https://github.com/nullcpy/rvb/releases/tag/380576727",
-    "isArchiveFallback": false
-  },
+  "latestStable": "380576727",
   "latestBeta": null
 }
 ```
@@ -84,7 +92,6 @@ Represents an individual build artifact release:
 ```json
 {
   "build": "380576727",
-  "releaseId": "380576727",
   "releaseType": "stable",
   "isArchive": false,
   "version": "19.16.39",
@@ -92,25 +99,26 @@ Represents an individual build artifact release:
   "subVariant": null,
   "publishedAt": "2026-09-08T02:00:00.000Z",
   "releaseUrl": "https://github.com/nullcpy/rvb/releases/tag/380576727",
-  "patchSources": ["MorpheApp/morphe-patches"],
-  "changelogs": ["https://github.com/MorpheApp/morphe-patches/releases/latest"],
-  "appliedPatches": [
-    {
-      "name": "Hide Ads",
-      "description": "Removes video and banner advertisements."
-    }
-  ],
+  "patchSourceRef": 0,
+  "changelogRef": 0,
+  "patchSetRef": 0,
   "assets": [
     {
       "name": "youtube-morphe-v19.16.39-arm64-v8a.apk",
       "size": 134217728,
-      "downloadCount": 4200,
-      "downloadUrl": "https://github.com/nullcpy/rvb/releases/download/380576727/youtube-morphe-v19.16.39-arm64-v8a.apk",
+      "download_count": 4200,
+      "browser_download_url": "https://github.com/nullcpy/rvb/releases/download/380576727/youtube-morphe-v19.16.39-arm64-v8a.apk",
       "arch": "arm64"
     }
   ]
 }
 ```
+
+> **Notes**
+> - **`patchSetRef` / `changelogRef` / `patchSourceRef`** are integer indices into the top-level `patchSets` / `changelogSets` / `patchSourceSets` tables (see above). Each build's applied-patch names, changelog URLs and patch-source slugs live once in the shared table; an empty list is omitted (no ref). Rendered in the *Applied Patches* modal, never on collapsed cards.
+> - **`releaseId`** is **omitted when it equals `build`** (true for all numbered releases; both are the tag). It is kept only when it differs — i.e. rolling archive entries, where `build` is a version but `releaseId` is `stable`/`beta`. The client falls back to `build` when it is absent.
+> - **`assets[].arch`** uses the compact keys `arm64 | arm | all | x86 | other` (see `groupAssetsByArchitecture`), while `CONFIG.knownArchs` lists the raw filename tokens used for auto-detection.
+> - **`assets[].fileType`** is **not stored** — it is always derived client-side from the filename extension via `getFileType()` (`.apk` → `APK`, `.zip` → `Module`).
 
 ---
 
@@ -128,14 +136,22 @@ const CONFIG = {
     "x86_64", "x86", "universal", "all"
   ],
   appCategories: {
+    "Adobe": ["adobe"],
     "Android TV": [
       "primevideo", "plutotv", "moviebox", "disneyplus", "disney",
       "hbomax", "tubi", "vix", "at4klauncher", "projectivylauncher",
       "peacock", "netflix", "nuvio"
     ],
-    "Google": ["youtube", "google"],
+    "Browser": ["browser", "edge"],
+    "Google": ["youtube", "google", "gboard"],
+    "Launcher": ["launcher", "at4klauncher", "projectivylauncher"],
     "Meta": ["threads", "instagram", "messenger", "facebook", "!plusmessenger"],
-    "VPN": ["1111warp", "vpnify", "vpn"]
+    "Social": [
+      "threads", "instagram", "messenger", "facebook", "twitter",
+      "tiktok", "telegram", "reddit", "pinterest", "tumblr"
+    ],
+    "VPN": ["cloudflarewarp", "vpnify", "vpn"],
+    "YouTube": ["youtube"]
   },
   appNotices: [ ... ]
 };
@@ -225,7 +241,8 @@ Unmatched apps return `Infinity` and are filtered out instantly.
 
 ## 6. Maintenance & CI Lifecycle
 
-- **Publishing Builds**:
-  - When `nullcpy/rvb` builds apps, [`.github/scripts/update_website_catalog.py`](https://github.com/nullcpy/rvb/blob/main/.github/scripts/update_website_catalog.py) clones this repository, inserts or deduplicates builds matching `build` + `variant` + `subVariant`, updates channel pointers, and pushes back to `main`.
-- **Live Metrics Synchronization & Pruning**:
-  - When GitHub Actions runs cleanup, [`.github/scripts/sync_website_catalog.py`](https://github.com/nullcpy/rvb/blob/main/.github/scripts/sync_website_catalog.py) verifies surviving release assets on GitHub, prunes deleted builds, reconciles variant pointers to the next surviving build, and deletes empty apps/brands.
+- **Sole writer of `data.json`**:
+  - [`.github/scripts/rebuild_catalog.py`](.github/scripts/rebuild_catalog.py) regenerates the entire catalog in **this** repo and is the *only* component that writes `data.json`. Its `finalize()` step emits the deduped schema: a top-level `patchSets` table with per-build integer `patchSetRef`, channel pointers stored as bare **build-id strings**, `releaseId` omitted when equal to `build`, and asset `fileType` omitted (derived client-side).
+  - It runs via [`rebuild-catalog.yml`](.github/workflows/rebuild-catalog.yml) on `repository_dispatch` (from rvb releases), the ~6-hourly schedule safety-net, or manual `workflow_dispatch`, then self-dispatches a Pages deploy.
+- **rvb is an input source only**:
+  - `nullcpy/rvb` does **not** write or patch `data.json`. `rebuild_catalog.py` reads it through the GitHub API — each release's `build.json` manifest plus the releases/assets listings — and derives every field locally.
