@@ -71,9 +71,48 @@ const CONFIG = {
         }
       ]
     }
-  ]
+  ],
+  // Header dropdown menus (GitHub / Donate / Social)
+  "links": {
+    "github": [
+      { "label": "Builder repo", "url": "https://github.com/m4mental/my-rvb-builder" },
+      { "label": "Website repo", "url": "https://github.com/nullcpy/m4mental.github.io" },
+      { "label": "Report an issue", "url": "https://github.com/m4mental/my-rvb-builder/issues/new/choose" }
+    ],
+    "donate": [
+      { "label": "Patreon", "url": "https://www.patreon.com/cw/fahim_ahmed" },
+      { "label": "Skrill", "url": "https://skrill.me/rq/Fahim/5/USD?key=YPLEz71Jl8tmjGe9YjkvwAgpebX" },
+      { "label": "Pathao Pay", "url": "https://pathaopay.me/@fahim.ahmed" }
+    ],
+    "telegram": [
+      { "label": "Telegram group", "url": "https://t.me/open_sauce" },
+      { "label": "Telegram channel", "url": "https://t.me/m4mental store_updates" },
+      { "label": "Signal group", "url": "https://signal.group/#CjQKILNEmjszgWGXNBiZwTtdOTJikU534DIR90NZAoCePX6fEhBsFkkMyq5a4m2E6iSZqt5O" }
+    ],
+    "theme": [
+      { "label": "System", "action": "system" },
+      { "label": "Light", "action": "light" },
+      { "label": "Dark", "action": "dark" }
+    ]
+  }
 };
 
+
+// Sort options for the header-style sort popup
+const SORT_ICONS = {
+  recent:
+    '<svg class="sort-opt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+  popular:
+    '<svg class="sort-opt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>',
+  name:
+    '<svg class="sort-opt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>',
+};
+
+const SORT_OPTIONS = [
+  { value: "recent", label: "Recent", icon: SORT_ICONS.recent },
+  { value: "popular", label: "Popular", icon: SORT_ICONS.popular },
+  { value: "name", label: "Name", icon: SORT_ICONS.name },
+];
 
 // Cached DOM references
 const DOM = {};
@@ -85,13 +124,20 @@ function initDOM() {
   DOM.searchInput = document.getElementById("searchInput");
   DOM.searchWrap = DOM.searchInput?.closest(".search-input-wrap");
   DOM.searchClearBtn = document.getElementById("searchClearBtn");
-  DOM.sortSelect = document.getElementById("sortSelect");
+  DOM.sortDropdown = document.getElementById("sortDropdown");
+  DOM.sortTrigger = document.getElementById("sortTrigger");
+  DOM.sortTriggerIcon = document.getElementById("sortTriggerIcon");
+  DOM.sortMenu = document.getElementById("sortMenu");
   DOM.appFilterButtons = document.getElementById("appFilterButtons");
   DOM.catalogCountText = document.getElementById("catalogCountText");
   DOM.lastUpdateText = document.getElementById("lastUpdateText");
-  DOM.themeBtn = document.getElementById("themeBtn");
-  DOM.menuBtn = document.getElementById("menuBtn");
-  DOM.actionMenu = document.getElementById("actionMenu");
+  DOM.themeBtn = document.getElementById("themeMenuBtn");
+  DOM.headerMenus = ["github", "donate", "telegram", "theme"].map((key) => ({
+    key,
+    wrap: document.getElementById(`${key}MenuWrap`),
+    trigger: document.getElementById(`${key}MenuBtn`),
+    menu: document.getElementById(`${key}Menu`),
+  }));
   DOM.patchModal = document.getElementById("patchModal");
   DOM.patchModalTitle = document.getElementById("patchModalTitle");
   DOM.patchModalBody = document.getElementById("patchModalBody");
@@ -100,6 +146,8 @@ function initDOM() {
   DOM.appliedPatchesMeta = document.getElementById("appliedPatchesMeta");
   DOM.appliedPatchesBody = document.getElementById("appliedPatchesBody");
   DOM.patchSearchInput = document.getElementById("patchSearchInput");
+  DOM.patchSearchWrap = DOM.patchSearchInput?.closest(".patch-search-input-wrap");
+  DOM.patchSearchClearBtn = document.getElementById("patchSearchClearBtn");
   DOM.patchCountBadge = document.getElementById("patchCountBadge");
   DOM.obtainiumModal = document.getElementById("obtainiumModal");
   DOM.obtainiumTitle = document.getElementById("obtainiumTitle");
@@ -170,7 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const urlSort = urlParams.get("sort");
   if (urlSort && ["recent", "popular", "name"].includes(urlSort)) {
     sortMode = urlSort;
-    if (DOM.sortSelect) DOM.sortSelect.value = sortMode;
+    updateSortUI();
   }
 
   loadReleases();
@@ -202,9 +250,20 @@ function applyTheme(theme) {
   }
 
   if (DOM.themeBtn) {
-    DOM.themeBtn.textContent = theme === "system" ? "🖥️" : theme === "light" ? "☀️" : "🌙";
-    DOM.themeBtn.setAttribute("aria-label", `Theme mode: ${theme}`);
+    const label = `Theme: ${theme}`;
+    DOM.themeBtn.setAttribute("aria-label", label);
+    DOM.themeBtn.setAttribute("title", label);
   }
+
+  updateThemeMenuIndicator(theme);
+}
+
+// Mark the active theme option with a pointer on the right
+function updateThemeMenuIndicator(theme) {
+  document.querySelectorAll("#themeMenu [data-theme]").forEach((el) => {
+    const indicator = el.querySelector(".dropdown-item-indicator");
+    if (indicator) indicator.textContent = el.dataset.theme === theme ? "👈" : "";
+  });
 }
 
 // Modal Generic Controller
@@ -239,31 +298,8 @@ function hideModal(modalEl) {
 function setupEventListeners() {
   let searchTimeout;
 
-  // Theme Toggle Button
-  if (DOM.themeBtn) {
-    DOM.themeBtn.addEventListener("click", () => {
-      const nextTheme = themeMode === "system" ? "light" : themeMode === "light" ? "dark" : "system";
-      themeMode = nextTheme;
-      localStorage.setItem("theme", nextTheme);
-      applyTheme(nextTheme);
-    });
-  }
-
-  // Floating Action Menu
-  if (DOM.menuBtn && DOM.actionMenu) {
-    DOM.menuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      DOM.actionMenu.classList.toggle("open");
-      DOM.menuBtn.setAttribute("aria-expanded", DOM.actionMenu.classList.contains("open"));
-    });
-
-    document.addEventListener("click", (e) => {
-      if (DOM.actionMenu.classList.contains("open") && !DOM.actionMenu.contains(e.target)) {
-        DOM.actionMenu.classList.remove("open");
-        DOM.menuBtn.setAttribute("aria-expanded", "false");
-      }
-    });
-  }
+  // Header Dropdown Menus (GitHub / Donate / Telegram / Theme)
+  setupHeaderMenus();
 
   // Search Input (Debounced)
   const syncClearBtn = () => {
@@ -321,14 +357,8 @@ function setupEventListeners() {
     });
   }
 
-  // Sort Selector
-  if (DOM.sortSelect) {
-    DOM.sortSelect.addEventListener("change", (e) => {
-      sortMode = e.target.value;
-      syncUrlParams();
-      filterAndRenderReleases();
-    });
-  }
+  // Sort Dropdown (header-style popup)
+  setupSortDropdown();
 
   // App Cards & Modal Delegate Click
   if (DOM.builds) {
@@ -474,8 +504,21 @@ function setupEventListeners() {
 
   if (DOM.patchSearchInput) {
     DOM.patchSearchInput.addEventListener("input", (e) => {
+      syncPatchClearBtn();
       filterAppliedPatchesList(e.target.value);
     });
+  }
+
+  if (DOM.patchSearchClearBtn && DOM.patchSearchInput) {
+    const handlePatchClear = (e) => {
+      e.preventDefault();
+      if (DOM.patchSearchInput.value === "") return;
+      DOM.patchSearchInput.value = "";
+      syncPatchClearBtn();
+      filterAppliedPatchesList("");
+    };
+    DOM.patchSearchClearBtn.addEventListener("pointerdown", handlePatchClear);
+    DOM.patchSearchClearBtn.addEventListener("click", handlePatchClear);
   }
 
   // Obtainium Modal
@@ -500,11 +543,165 @@ function setupEventListeners() {
       closePatchModal();
       closeAppliedPatchesModal();
       closeObtainiumModal();
+      closeHeaderMenus();
+      closeSortDropdown();
     }
   });
 
 
 
+}
+
+// Header Dropdown Menus (GitHub / Donate / Telegram / Theme)
+function closeHeaderMenus() {
+  (DOM.headerMenus || []).forEach(({ wrap, trigger }) => {
+    wrap?.classList.remove("open");
+    trigger?.setAttribute("aria-expanded", "false");
+  });
+}
+
+function setupHeaderMenus() {
+  (DOM.headerMenus || []).forEach(({ key, wrap, trigger, menu }) => {
+    if (!trigger || !menu) return;
+
+    // Build items from CONFIG.links: url → external link, action → in-page button
+    menu.replaceChildren(
+      ...(CONFIG.links[key] || []).map((item) => {
+        const makeItem = (tag) => {
+          const el = document.createElement(tag);
+          el.className = "dropdown-item";
+          const label = document.createElement("span");
+          label.className = "dropdown-item-label";
+          label.textContent = item.label;
+          el.appendChild(label);
+          return el;
+        };
+
+        if (item.action) {
+          const btn = makeItem("button");
+          btn.type = "button";
+          btn.dataset.theme = item.action;
+          const indicator = document.createElement("span");
+          indicator.className = "dropdown-item-indicator";
+          btn.appendChild(indicator);
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            themeMode = item.action;
+            localStorage.setItem("theme", item.action);
+            applyTheme(item.action);
+            closeHeaderMenus();
+          });
+          return btn;
+        }
+        const a = makeItem("a");
+        a.href = item.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        return a;
+      })
+    );
+
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wasOpen = wrap?.classList.contains("open");
+      closeHeaderMenus();
+      closeSortDropdown();
+      if (!wasOpen && wrap) {
+        wrap.classList.add("open");
+        trigger.setAttribute("aria-expanded", "true");
+      }
+    });
+  });
+
+  // Single outside-click handler for all header menus
+  document.addEventListener("click", (e) => {
+    const anyOpen = (DOM.headerMenus || []).some(({ wrap }) => wrap?.classList.contains("open"));
+    if (anyOpen && !(DOM.headerMenus || []).some(({ wrap }) => wrap?.contains(e.target))) {
+      closeHeaderMenus();
+    }
+  });
+
+  // Reflect the current theme in the freshly built menu
+  updateThemeMenuIndicator(themeMode);
+}
+
+// Sort Dropdown (header-style popup)
+function closeSortDropdown() {
+  DOM.sortDropdown?.classList.remove("open");
+  DOM.sortTrigger?.setAttribute("aria-expanded", "false");
+}
+
+function updateSortUI() {
+  const opt = SORT_OPTIONS.find((o) => o.value === sortMode) || SORT_OPTIONS[0];
+  if (DOM.sortTriggerIcon) DOM.sortTriggerIcon.innerHTML = opt.icon;
+  if (DOM.sortTrigger) {
+    const desc = `Sort by: ${opt.label}`;
+    DOM.sortTrigger.setAttribute("aria-label", desc);
+    DOM.sortTrigger.setAttribute("title", desc);
+  }
+  document.querySelectorAll("#sortMenu [data-sort]").forEach((el) => {
+    const indicator = el.querySelector(".dropdown-item-indicator");
+    if (indicator) indicator.textContent = el.dataset.sort === sortMode ? "👈" : "";
+  });
+}
+
+function setSortMode(value) {
+  sortMode = value;
+  updateSortUI();
+  syncUrlParams();
+  filterAndRenderReleases();
+}
+
+function setupSortDropdown() {
+  const { sortDropdown, sortTrigger, sortMenu } = DOM;
+  if (!sortDropdown || !sortTrigger || !sortMenu) return;
+
+  sortMenu.replaceChildren(
+    ...SORT_OPTIONS.map((opt) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dropdown-item";
+      btn.dataset.sort = opt.value;
+
+      const icon = document.createElement("span");
+      icon.className = "dropdown-item-icon";
+      icon.innerHTML = opt.icon;
+
+      const label = document.createElement("span");
+      label.className = "dropdown-item-label";
+      label.textContent = opt.label;
+
+      const indicator = document.createElement("span");
+      indicator.className = "dropdown-item-indicator";
+
+      btn.append(icon, label, indicator);
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setSortMode(opt.value);
+        closeSortDropdown();
+      });
+      return btn;
+    })
+  );
+
+  sortTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = sortDropdown.classList.contains("open");
+    closeHeaderMenus();
+    closeSortDropdown();
+    if (!wasOpen) {
+      sortDropdown.classList.add("open");
+      sortTrigger.setAttribute("aria-expanded", "true");
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (sortDropdown.classList.contains("open") && !sortDropdown.contains(e.target)) {
+      closeSortDropdown();
+    }
+  });
+
+  updateSortUI();
 }
 
 function syncUrlParams() {
@@ -1466,6 +1663,7 @@ function openAppliedPatchesModal(appKey, brandKey, buildId, variant = null, subV
 
   if (DOM.patchSearchInput) {
     DOM.patchSearchInput.value = "";
+    syncPatchClearBtn();
   }
 }
 
@@ -1509,12 +1707,19 @@ function getBuildPatchSources(build) {
   return _resolveSetRef(build.patchSourceRef, cachedPatchSourceSets, build.patchSources);
 }
 
+// Toggle the patch-filter clear button based on the input's content
+function syncPatchClearBtn() {
+  if (DOM.patchSearchWrap && DOM.patchSearchInput) {
+    DOM.patchSearchWrap.classList.toggle("has-value", DOM.patchSearchInput.value.length > 0);
+  }
+}
+
 function filterAppliedPatchesList(query) {
   if (!DOM.appliedPatchesBody) return;
 
   if (!activeAppliedPatchesList) {
     if (DOM.patchCountBadge) {
-      DOM.patchCountBadge.textContent = "0 patches";
+      DOM.patchCountBadge.textContent = "0";
     }
     DOM.appliedPatchesBody.innerHTML = '<div class="no-results" style="padding: 36px 20px; text-align: center; color: var(--text-muted);">No applied patches data available for this build.</div>';
     return;
@@ -1526,7 +1731,7 @@ function filterAppliedPatchesList(query) {
   );
 
   if (DOM.patchCountBadge) {
-    DOM.patchCountBadge.textContent = `${filtered.length} of ${activeAppliedPatchesList.length} patches`;
+    DOM.patchCountBadge.textContent = `${filtered.length}`;
   }
 
   if (filtered.length === 0) {

@@ -3,8 +3,8 @@
     --bg-primary: #1a1814;
     --bg-secondary: #201e1a;
     --bg-tertiary: #2a2723;
-    --bg-card: rgba(32, 30, 26, 0.92);
-    --bg-card-hover: rgba(38, 35, 30, 0.95);
+    --bg-card: #201e1a;
+    --bg-card-hover: #26231e;
     --text-primary: #f0ede8;
     --text-secondary: #a89f94;
     --text-muted: #6b6358;
@@ -98,6 +98,9 @@ body.light-mode {
 
 html {
     scroll-behavior: smooth;
+    /* Reserve the scrollbar space permanently so opening a modal
+       (body.modal-open { overflow: hidden }) doesn't shift/reflow the layout */
+    scrollbar-gutter: stable;
 }
 
 body {
@@ -106,17 +109,7 @@ body {
     font-family: var(--font-sans);
     line-height: 1.6;
     min-height: 100vh;
-    background-image:
-        radial-gradient(ellipse at 20% 0%, rgba(88, 166, 255, 0.07) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 90%, rgba(63, 185, 80, 0.05) 0%, transparent 50%);
-    background-attachment: scroll;
     transition: background-color 0.4s ease, color 0.4s ease;
-}
-
-body.light-mode {
-    background-image:
-        radial-gradient(ellipse at 20% 0%, rgba(9, 105, 218, 0.05) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 90%, rgba(26, 127, 55, 0.04) 0%, transparent 50%);
 }
 
 button,
@@ -132,100 +125,14 @@ textarea {
     padding: 0 24px;
 }
 
-/* Floating Action Menu */
-.theme-toggle {
-    position: fixed;
-    top: 24px;
-    right: 24px;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 12px;
-    pointer-events: none;
-    /* Let clicks pass through the invisible flex container */
-}
-
-.action-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(-10px);
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    pointer-events: none;
-}
-
-.theme-toggle.open .action-buttons {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-#menuBtn {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-full);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 4px 12px var(--shadow-sm);
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 10;
-    pointer-events: auto;
-    /* Re-enable clicks for the button */
-}
-
-#themeBtn,
-#issueBtn,
-#announcementBtn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-full);
-    font-size: 20px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    box-shadow: var(--shadow);
-    text-decoration: none;
-    backdrop-filter: blur(12px);
-}
-
-#themeBtn {
-    font-size: 20px;
-}
-
-@media (hover: hover) {
-
-
-    #menuBtn:hover,
-    #themeBtn:hover,
-    #issueBtn:hover,
-    #announcementBtn:hover {
-        transform: scale(1.08);
-        border-color: var(--accent);
-        box-shadow: 0 0 15px var(--accent-glow);
-    }
-}
-
 /* Header */
 header {
-    background: linear-gradient(180deg, var(--bg-secondary) 0%, transparent 100%);
+    /* Transparent so it blends into the solid body bg — any opaque fill here
+       (or the old blur) showed up as a visible seam across the top */
+    background: transparent;
     padding: 36px 0 20px;
     text-align: center;
     margin-bottom: 24px;
-    backdrop-filter: blur(16px);
     transition: background 0.4s ease, border-color 0.4s ease;
 }
 
@@ -280,13 +187,107 @@ header h1 {
     display: block;
 }
 
+.top-link-wrap {
+    position: relative;
+}
+
+/* Header Dropdown Menus (GitHub / Donate / Telegram / Theme) */
+.top-link.menu-trigger {
+    cursor: pointer;
+    font: inherit;
+}
+
+.top-link-wrap.open>.top-link {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-glow);
+}
+
+/* Keep the donate trigger's open state in its own rose color */
+.top-link-wrap:has(.donate-link).open>.top-link {
+    color: #f43f5e;
+    border-color: #f43f5e;
+    background: rgba(244, 63, 94, 0.12);
+}
+
 @media (hover: hover) {
 
 
-    .top-links a.donate-link:hover {
+    .top-links .donate-link:hover {
         color: #f43f5e;
         border-color: #f43f5e;
         background: rgba(244, 63, 94, 0.12);
+    }
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 50%;
+    transform: translate(-50%, -8px);
+    width: fit-content;
+    min-width: 150px;
+    max-width: 260px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1200;
+}
+
+.top-link-wrap.open .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dropdown-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dropdown-item-indicator {
+    flex: none;
+    width: 1.2em;
+    text-align: right;
+}
+
+@media (hover: hover) {
+
+
+    .dropdown-item:hover {
+        background: var(--accent-glow);
+        color: var(--accent);
     }
 }
 
@@ -344,10 +345,18 @@ main {
     gap: 14px;
 }
 
+.search-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .search-input-wrap {
     position: relative;
     display: flex;
     align-items: center;
+    flex: 1;
+    min-width: 0;
 }
 
 .search-icon {
@@ -361,6 +370,7 @@ main {
 
 #searchInput {
     width: 100%;
+    min-width: 0;
     padding: 16px 48px 16px 48px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -478,34 +488,75 @@ main {
     box-shadow: 0 0 10px var(--accent-glow);
 }
 
-.sort-selector-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-.sort-label {
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    font-weight: 600;
-}
-
 .sort-select {
-    padding: 6px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    padding: 0;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow);
     color: var(--text-primary);
-    font-size: 0.84rem;
-    font-weight: 500;
+    font-family: inherit;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
-.sort-select:focus {
+.sort-opt-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+.sort-select .sort-opt-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.dropdown-item-icon {
+    display: inline-flex;
+    flex: none;
+}
+
+.sort-select:focus-visible {
     outline: none;
     border-color: var(--accent);
+}
+
+@media (hover: hover) {
+
+
+    .sort-select:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+}
+
+/* Highlight follows the open state (like the top buttons) so it clears on close */
+.sort-dropdown.open .sort-select {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.sort-dropdown {
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* Right-align so the popup stays on-screen at the toolbar's edge */
+.sort-dropdown .dropdown-menu {
+    left: auto;
+    right: 0;
+    transform: translateY(-8px);
+}
+
+.sort-dropdown.open .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
 }
 
 /* Catalog Status Bar */
@@ -1601,10 +1652,18 @@ body.light-mode .download-btn {
     gap: 12px;
 }
 
-#patchSearchInput {
+.patch-search-input-wrap {
+    position: relative;
     flex: 1;
     min-width: 0;
-    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+}
+
+#patchSearchInput {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 40px 10px 14px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -1614,13 +1673,54 @@ body.light-mode .download-btn {
     box-sizing: border-box;
 }
 
+#patchSearchClearBtn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-full);
+    border: none;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) scale(0.8);
+    transition: all 0.2s ease;
+    z-index: 5;
+    box-sizing: border-box;
+}
+
+.patch-search-input-wrap.has-value #patchSearchClearBtn {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(-50%) scale(1);
+}
+
+@media (hover: hover) {
+
+
+    #patchSearchClearBtn:hover {
+        background: var(--accent-danger);
+        color: #ffffff;
+    }
+}
+
 #patchCountBadge {
     flex-shrink: 0;
+    width: 42px;
     height: 42px;
-    padding: 0 14px;
-    border-radius: var(--radius-md);
+    padding: 0;
+    border-radius: var(--radius-full);
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     box-sizing: border-box;
 }
 
@@ -1844,11 +1944,6 @@ footer a {
     }
 
     .filter-buttons {
-        justify-content: center;
-    }
-
-    .sort-selector-wrap {
-        width: 100%;
         justify-content: center;
     }
 
