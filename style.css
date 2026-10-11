@@ -762,6 +762,7 @@ main {
 .app-notice-links a {
     display: inline-flex;
     align-items: center;
+    gap: 4px;
     padding: 3px 10px;
     border-radius: var(--radius-full);
     text-decoration: none;
@@ -1040,7 +1041,8 @@ body.light-mode .variant-row {
     font-weight: 600;
     font-family: var(--font-mono);
     color: var(--text-primary);
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: break-word;
     width: 100%;
     line-height: 1.35;
     letter-spacing: -0.01em;

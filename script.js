@@ -114,6 +114,10 @@ const SORT_OPTIONS = [
   { value: "name", label: "Name", icon: SORT_ICONS.name },
 ];
 
+// Shared "external link" arrow used on link buttons (dropdown items, patch links)
+const EXTERNAL_LINK_ARROW =
+  '<svg class="patch-link-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>';
+
 // Cached DOM references
 const DOM = {};
 
@@ -1086,7 +1090,7 @@ function getNoticeInlineStyles(notice) {
 
 function createNoticeMarkup(notice) {
   const linksMarkup = (notice.links || [])
-    .map((link) => `<a href="${link.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)} ↗</a>`)
+    .map((link) => `<a href="${link.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}${EXTERNAL_LINK_ARROW}</a>`)
     .join(" ");
 
   const styleAttr = getNoticeInlineStyles(notice);
@@ -1098,6 +1102,16 @@ function createNoticeMarkup(notice) {
       ${linksMarkup ? `<div class="app-notice-links">${linksMarkup}</div>` : ""}
     </div>
   `;
+}
+
+// Compact version text for a build: "1.2.3" or "1.2.3 / 1.2.4 + 1" (no "v"
+// prefix). A numbered build publishes each arch independently, so it can carry
+// several versions; show at most two and fold the rest into a "+ N" overflow.
+function formatVersions(versions, version) {
+  const arr = Array.isArray(versions) && versions.length ? versions : (version ? [version] : []);
+  if (arr.length <= 1) return arr[0] || "";
+  const extra = arr.length - 2;
+  return arr.slice(0, 2).join(" / ") + (extra > 0 ? ` + ${extra}` : "");
 }
 
 // Resolve a variant's channel pointer into display fields. data.json stores
@@ -1117,6 +1131,7 @@ function resolveChannelPointer(brand, variant, channel) {
   if (!found) return null;
   return {
     version: found.version,
+    versions: found.versions,
     build: found.build,
     publishedAt: found.publishedAt,
     isArchiveFallback: !!found.isArchive,
@@ -1165,7 +1180,7 @@ function createBrandMarkup(app, brand) {
               <span class="channel-tag stable">Stable</span>
               <span class="channel-date">${formatDate(stablePtr.publishedAt)}</span>
             </div>
-            <span class="channel-version">${escapeHtml(stablePtr.version)}</span>
+            <span class="channel-version">${escapeHtml(formatVersions(stablePtr.versions, stablePtr.version))}</span>
             <span class="channel-build-num">${stablePtr.isArchiveFallback ? "Archive" : `Build ${escapeHtml(stablePtr.build)}`}</span>
           </button>
         `);
@@ -1186,7 +1201,7 @@ function createBrandMarkup(app, brand) {
               <span class="channel-tag beta">Beta</span>
               <span class="channel-date">${formatDate(betaPtr.publishedAt)}</span>
             </div>
-            <span class="channel-version">${escapeHtml(betaPtr.version)}</span>
+            <span class="channel-version">${escapeHtml(formatVersions(betaPtr.versions, betaPtr.version))}</span>
             <span class="channel-build-num">${betaPtr.isArchiveFallback ? "Archive" : `Build ${escapeHtml(betaPtr.build)}`}</span>
           </button>
         `);
@@ -1468,17 +1483,8 @@ function createPatchModalContent(app, brand, buildFilter = "stable", selectedVar
 function createModalBuildMarkup(app, brand, build, openByDefault = false) {
   const assetsByArch = groupAssetsByArchitecture(build.assets);
   const titleText = build.isArchive ? escapeHtml(build.build) : `Build ${escapeHtml(build.build)}`;
-  // A numbered build publishes each arch independently, so it can carry several
-  // versions at once (arm64 newest, arm a fallback). Show at most two joined by
-  // " / " and fold the rest into a "+ N" overflow so long version lists stay compact.
-  const versionsArr = (build.versions && build.versions.length) ? build.versions : (build.version ? [build.version] : []);
-  let verText = "";
-  if (versionsArr.length === 1) {
-    verText = `v${versionsArr[0]}`;
-  } else if (versionsArr.length > 1) {
-    const extra = versionsArr.length - 2;
-    verText = versionsArr.slice(0, 2).map((v) => `v${v}`).join(" / ") + (extra > 0 ? ` + ${extra}` : "");
-  }
+  // Compact, "v"-less version text (shared with the app-card channel boxes).
+  const verText = formatVersions(build.versions, build.version);
 
   let downloadsMarkup = "";
 
@@ -1494,7 +1500,7 @@ function createModalBuildMarkup(app, brand, build, openByDefault = false) {
         <div class="download-btn ${arch}">
           <div class="asset-left">
             <span class="asset-title">${escapeHtml(app.appName)}</span>
-            <span class="asset-subtitle">${escapeHtml(asset.version ? `v${asset.version}` : (build.version ? `v${build.version}` : "Latest"))} • ${escapeHtml(getFileType(asset.name))}</span>
+            <span class="asset-subtitle">${escapeHtml(asset.version || build.version || "Latest")} • ${escapeHtml(getFileType(asset.name))}</span>
           </div>
           <div class="asset-right">
             <span class="btn-text">${sizeStr} • 📥 ${downloads}</span>
@@ -1529,7 +1535,7 @@ function createModalBuildMarkup(app, brand, build, openByDefault = false) {
     ? Object.entries(archPatchRefs).map(([arch, info]) => `
       <button class="patch-applied-btn arch-tab-btn" ${commonAttrs} data-arch="${arch}" type="button">
         <span class="arch-tab-label">${escapeHtml(capitalizeArch(arch))}</span>
-        ${info.version ? `<span class="arch-tab-ver">v${escapeHtml(info.version)}</span>` : ""}
+        ${info.version ? `<span class="arch-tab-ver">${escapeHtml(info.version)}</span>` : ""}
       </button>`).join("")
     : `
       <button class="patch-applied-btn" ${commonAttrs} type="button">View Applied Patches</button>`;
@@ -1649,7 +1655,7 @@ function openAppliedPatchesModal(appKey, brandKey, buildId, variant = null, subV
     const badgesHtml = patchNamesList.map((name, index) => {
       const url = changelogList[index] || (changelogList.length === 1 ? changelogList[0] : null);
       if (url) {
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="patch-engine-badge patch-engine-link" title="Open changelog for ${escapeHtml(name)}">${escapeHtml(name)}<svg class="patch-link-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></a>`;
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="patch-engine-badge patch-engine-link" title="Open changelog for ${escapeHtml(name)}">${escapeHtml(name)}${EXTERNAL_LINK_ARROW}</a>`;
       }
       return `<span class="patch-engine-badge">${escapeHtml(name)}</span>`;
     }).join("");
