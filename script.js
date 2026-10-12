@@ -75,8 +75,8 @@ const CONFIG = {
   // Header dropdown menus (GitHub / Donate / Social)
   "links": {
     "github": [
-      { "label": "Builder repo", "url": "https://github.com/m4mental/my-rvb-builder" },
-      { "label": "Website repo", "url": "https://github.com/nullcpy/m4mental.github.io" },
+      { "label": "Builder Repo", "url": "https://github.com/m4mental/my-rvb-builder" },
+      { "label": "Website Repo", "url": "https://github.com/nullcpy/m4mental.github.io" },
       { "label": "Report an issue", "url": "https://github.com/m4mental/my-rvb-builder/issues/new/choose" }
     ],
     "donate": [
@@ -85,10 +85,8 @@ const CONFIG = {
       { "label": "Pathao Pay", "url": "https://pathaopay.me/@fahim.ahmed" }
     ],
     "telegram": [
-      { "label": "Telegram group", "url": "https://t.me/open_sauce" },
-      { "label": "Telegram channel", "url": "https://t.me/m4mental store_updates" },
-      { "label": "WhatsApp group", "url": "https://chat.whatsapp.com/JF5lDymMxB4BpuEN77w54y" },
-      { "label": "Signal group", "url": "https://signal.group/#CjQKILNEmjszgWGXNBiZwTtdOTJikU534DIR90NZAoCePX6fEhBsFkkMyq5a4m2E6iSZqt5O" }
+      { "label": "Telegram Group", "url": "https://t.me/m4mental storetg" },
+      { "label": "Telegram Channel", "url": "https://t.me/m4mental store_updates" }
     ],
     "theme": [
       { "label": "System", "action": "system" },
