@@ -152,6 +152,7 @@ function initDOM() {
   DOM.patchSearchWrap = DOM.patchSearchInput?.closest(".patch-search-input-wrap");
   DOM.patchSearchClearBtn = document.getElementById("patchSearchClearBtn");
   DOM.patchCountBadge = document.getElementById("patchCountBadge");
+  DOM.patchArchPills = document.getElementById("patchArchPills");
   DOM.obtainiumModal = document.getElementById("obtainiumModal");
   DOM.obtainiumTitle = document.getElementById("obtainiumTitle");
   DOM.obtainiumBody = document.getElementById("obtainiumBody");
@@ -197,6 +198,10 @@ let modalSelectedVariant = null;
 let modalSelectedSubVariant = null;
 let themeMode = "system";
 let activeAppliedPatchesList = [];
+let activePatchMedia = null; // { apk: [...], module: [...] } when one build carries both patch sets
+let modalActiveMedium = "all"; // "all" | "apk" | "module" within the Applied Patches modal
+let modalActiveArch = null; // arch pill currently active within the Applied Patches modal
+let appliedPatchesCtx = null; // { app, brand, build, arch } kept so the pills can re-resolve
 
 // Stoplist Threshold
 
@@ -499,6 +504,23 @@ function setupEventListeners() {
   // Applied Patches Modal
   if (DOM.appliedPatchesModal) {
     DOM.appliedPatchesModal.addEventListener("click", (e) => {
+      const archBtn = e.target.closest(".patch-arch-btn");
+      if (archBtn && appliedPatchesCtx) {
+        appliedPatchesCtx.arch = archBtn.dataset.arch || null;
+        modalActiveArch = appliedPatchesCtx.arch;
+        reresolveAppliedPatches();
+        filterAppliedPatchesList(DOM.patchSearchInput?.value || "");
+        return;
+      }
+
+      const mediumBtn = e.target.closest(".patch-medium-btn");
+      if (mediumBtn) {
+        modalActiveMedium = mediumBtn.dataset.medium || "all";
+        updateMediumPillsUI();
+        filterAppliedPatchesList(DOM.patchSearchInput?.value || "");
+        return;
+      }
+
       if (e.target.id === "appliedPatchesModal" || e.target.closest(".modal-close")) {
         closeAppliedPatchesModal();
       }
@@ -1521,11 +1543,13 @@ function createModalBuildMarkup(app, brand, build, openByDefault = false) {
   // Per-arch applied patches: when this build's arches resolve to different patch
   // sets (distinct patchSetRefs — a fallback arch applied a different list), offer
   // one patch button per arch, mirroring the Stable/Beta channel tabs. When the
-  // arches share one list, a single button stays.
+  // arches share one list, a single button stays. The same filtered view feeds the
+  // modal's arch pills, so card and modal can never disagree.
   const archPatchRefs = {};
-  Object.entries(assetsByArch).forEach(([arch, list]) => {
+  const allowedArches = new Set(getDistinctArchPatchSets(build));
+  Object.entries(groupAssetsByArchitecture(build.assets)).forEach(([arch, list]) => {
     const rep = list.find((a) => a.name.toLowerCase().endsWith(".apk")) || list[0];
-    if (rep && Number.isInteger(rep.patchSetRef)) {
+    if (rep && Number.isInteger(rep.patchSetRef) && allowedArches.has(arch)) {
       archPatchRefs[arch] = { ref: rep.patchSetRef, version: rep.version || build.version || "" };
     }
   });
@@ -1628,17 +1652,33 @@ function openAppliedPatchesModal(appKey, brandKey, buildId, variant = null, subV
     build = brand.builds?.[0];
   }
 
+  // Arches whose patch lists genuinely differ, resolved the same way the build
+  // card resolves its arch tabs (APK asset as the arch's representative). The
+  // entry point pre-selects one; the modal's arch pills can then switch it.
+  const distinctArches = getDistinctArchPatchSets(build);
+  const showArchPills = distinctArches.length > 1;
+  // Only a real arch split pins an arch; otherwise the build-level patch list
+  // stays in charge, exactly as before the pills existed.
+  if (showArchPills && !arch) {
+    arch = distinctArches[0];
+  } else if (!showArchPills) {
+    arch = null;
+  }
+
   if (DOM.appliedPatchesTitle) {
     const variantLabel = formatVariantLabel(build?.variant, build?.subVariant);
     const variantSuffix = variantLabel && variantLabel !== "Standard" ? ` • ${variantLabel}` : "";
-    const archSuffix = arch ? ` • ${capitalizeArch(arch)}` : "";
+    const archSuffix = showArchPills && arch ? ` • ${capitalizeArch(arch)}` : "";
     DOM.appliedPatchesTitle.textContent = `${app.appName} (${brand.brandName})${variantSuffix}${archSuffix}`;
   }
 
-  // When an arch tab opened the modal, resolve that arch's own patch list from its
+  // When an arch is in play, resolve that arch's own patch list from its
   // asset-level patchSetRef (schema v2); fall back to the build-level list when the
   // arch has no distinct list so the view is never empty for want of a ref.
-  let appliedPatches = arch ? (getArchAppliedPatches(build, arch) || getBuildAppliedPatches(build)) : getBuildAppliedPatches(build);
+  appliedPatchesCtx = { app, brand, build, arch, showArchPills };
+  modalActiveArch = arch;
+  const list = resolveAppliedPatchesView();
+  let appliedPatches = list.full;
   const allPatches = getBuildPatchSources(build);
   const allChangelogs = getBuildChangelogs(build);
 
@@ -1663,6 +1703,7 @@ function openAppliedPatchesModal(appKey, brandKey, buildId, variant = null, subV
   }
 
   activeAppliedPatchesList = appliedPatches;
+  renderPatchFilterPills();
   filterAppliedPatchesList("");
   showModal(DOM.appliedPatchesModal);
 
@@ -1682,13 +1723,68 @@ function getBuildAppliedPatches(build) {
 
 // Resolve one arch's applied-patches list from its asset-level patchSetRef
 // (schema v2). A numbered build can carry distinct patch sets per arch, so the
-// card's arch tabs read here rather than the single build-level list.
-function getArchAppliedPatches(build, arch) {
+// card's arch tabs read here rather than the single build-level list. The APK
+// asset is the representative: a module ZIP of the same arch may carry its own
+// list, which the modal's Module pill then shows.
+function getAssetAppliedPatches(build, arch) {
   if (!build || !Array.isArray(build.assets) || !arch) return null;
-  const asset = build.assets.find((a) => a.arch === arch);
-  if (!asset || !Number.isInteger(asset.patchSetRef)) return null;
+  const ofArch = build.assets.filter((a) => a.arch === arch && Number.isInteger(a.patchSetRef));
+  const asset = ofArch.find((a) => getAssetMedium(a) === "apk") || ofArch[0];
+  if (!asset) return null;
   const set = cachedPatchSets[asset.patchSetRef];
   return Array.isArray(set) && set.length > 0 ? set : null;
+}
+
+// Split a build's applied patches by delivery medium — the APK's list versus the
+// Magisk/KSU module ZIP's — restricted to one arch when the modal was opened from
+// an arch tab. Each medium keeps its own full list (a module ZIP usually carries
+// a subset of the APK's patches), and null is returned when the two lists match,
+// so the filter pills only appear where switching them really changes the view.
+function collectPatchMedia(build, arch) {
+  if (!build || !Array.isArray(build.assets)) return null;
+  const refs = { apk: new Set(), module: new Set() };
+  build.assets.forEach((a) => {
+    if (arch && a.arch !== arch) return;
+    if (!Number.isInteger(a.patchSetRef)) return;
+    refs[getAssetMedium(a)].add(a.patchSetRef);
+  });
+  const lists = {
+    apk: [...uniquePatches([...refs.apk].flatMap(resolvePatchSet)).values()],
+    module: [...uniquePatches([...refs.module].flatMap(resolvePatchSet)).values()],
+  };
+  if (lists.apk.length === 0 || lists.module.length === 0) return null;
+  if (listsIdentical(lists.apk, lists.module)) return null;
+  return lists;
+}
+
+// Map a patchSetRef to its list in the shared top-level patchSets table.
+function resolvePatchSet(ref) {
+  const set = cachedPatchSets[ref];
+  return Array.isArray(set) ? set : [];
+}
+
+// Normalise a patch name for comparison: upstream lists repeat the same patch as
+// "Hide ads" and "Hide ads ", which must not read as two entries.
+function normalizePatchName(name) {
+  return (name || "").trim().toLowerCase();
+}
+
+// Dedupe a raw patch-name sequence into a normalised-key -> display-name map.
+function uniquePatches(names) {
+  const out = new Map();
+  names.forEach((name) => {
+    const key = normalizePatchName(name);
+    if (!key || out.has(key)) return;
+    out.set(key, name);
+  });
+  return out;
+}
+
+// True when two patch lists hold the same names, ignoring casing and the stray
+// trailing whitespace the upstream lists carry.
+function listsIdentical(a, b) {
+  if (a.length !== b.length) return false;
+  return a.every((name) => b.some((other) => normalizePatchName(other) === normalizePatchName(name)));
 }
 
 // Resolve a build's changelogs / patchSources from the shared top-level tables
@@ -1712,11 +1808,102 @@ function getBuildPatchSources(build) {
   return _resolveSetRef(build.patchSourceRef, cachedPatchSourceSets, build.patchSources);
 }
 
+// Patch sets keyed per arch, using the APK asset as each arch's representative.
+// Shared by the build card's arch tabs and the modal's arch pills, so both read
+// the same split — and only list arches whose patches truly differ: upstream
+// repeats names with stray casing/whitespace, which must not fake a second view.
+function getDistinctArchPatchSets(build) {
+  const byArch = getArchPatchSets(build);
+  const names = Object.keys(byArch);
+  return names.filter((arch) =>
+    names.some((other) => other !== arch && !listsIdentical(byArch[arch], byArch[other])));
+}
+
+function getArchPatchSets(build) {
+  const sets = {};
+  if (!build || !Array.isArray(build.assets)) return sets;
+  Object.entries(groupAssetsByArchitecture(build.assets)).forEach(([arch, list]) => {
+    const rep = list.find((a) => a.name.toLowerCase().endsWith(".apk")) || list[0];
+    if (rep && Number.isInteger(rep.patchSetRef)) {
+      const set = cachedPatchSets[rep.patchSetRef];
+      if (Array.isArray(set) && set.length > 0) sets[arch] = set;
+    }
+  });
+  return sets;
+}
+
+// Re-resolve the open view after an arch pill switch: rebuild the title, the
+// arch's patch list and the APK/Module pills that hang off it.
+function reresolveAppliedPatches() {
+  if (!appliedPatchesCtx) return;
+  const { app, brand, build, arch, showArchPills } = appliedPatchesCtx;
+  modalActiveArch = arch;
+
+  if (DOM.appliedPatchesTitle) {
+    const variantLabel = formatVariantLabel(build?.variant, build?.subVariant);
+    const variantSuffix = variantLabel && variantLabel !== "Standard" ? ` • ${variantLabel}` : "";
+    const archSuffix = showArchPills && arch ? ` • ${capitalizeArch(arch)}` : "";
+    DOM.appliedPatchesTitle.textContent = `${app.appName} (${brand.brandName})${variantSuffix}${archSuffix}`;
+  }
+
+  const list = resolveAppliedPatchesView();
+  activeAppliedPatchesList = list.full;
+  renderPatchFilterPills();
+}
+
 // Toggle the patch-filter clear button based on the input's content
 function syncPatchClearBtn() {
   if (DOM.patchSearchWrap && DOM.patchSearchInput) {
     DOM.patchSearchWrap.classList.toggle("has-value", DOM.patchSearchInput.value.length > 0);
   }
+}
+
+// Resolve the open view's patch lists for the current arch: the arch's full list
+// ("full", shown when no APK/Module split exists) plus the per-medium lists that
+// feed the pills. APK is the primary medium whenever the two differ.
+function resolveAppliedPatchesView() {
+  const { build, arch } = appliedPatchesCtx;
+  const full = (arch ? getAssetAppliedPatches(build, arch) : null) || getBuildAppliedPatches(build);
+  activePatchMedia = collectPatchMedia(build, arch);
+  modalActiveMedium = activePatchMedia ? "apk" : "all";
+  return { full };
+}
+
+// One filter band for the Applied Patches view, built the same way the patch
+// modal builds its channel/variant row: a pill group per dimension, split by a
+// divider. Arch pills appear when arm64 and arm carry different patch sets, the
+// APK/Module pills when the two media do; either can stand alone.
+function renderPatchFilterPills() {
+  const archNames = appliedPatchesCtx && appliedPatchesCtx.showArchPills
+    ? Object.keys(getArchPatchSets(appliedPatchesCtx.build))
+    : [];
+  const archHtml = archNames.length
+    ? `<div class="filter-pill-group">${archNames.map((name) => `
+    <button type="button" class="modal-filter-btn patch-arch-btn" data-arch="${name}">${escapeHtml(capitalizeArch(name))}</button>`).join("")}</div>`
+    : "";
+  const mediumHtml = activePatchMedia
+    ? `<div class="filter-pill-group">
+    <button type="button" class="modal-filter-btn patch-medium-btn" data-medium="apk">APK <span class="medium-count">${activePatchMedia.apk.length}</span></button>
+    <button type="button" class="modal-filter-btn patch-medium-btn" data-medium="module">Module <span class="medium-count">${activePatchMedia.module.length}</span></button>
+  </div>`
+    : "";
+  const bandHtml = [archHtml, mediumHtml].filter(Boolean).join(`<span class="filter-group-divider"></span>`);
+
+  if (DOM.patchArchPills) {
+    DOM.patchArchPills.innerHTML = bandHtml;
+    DOM.patchArchPills.style.display = bandHtml ? "flex" : "none";
+    DOM.patchArchPills.querySelectorAll(".patch-arch-btn").forEach((btn) => {
+      btn.classList.toggle("active", (btn.dataset.arch || null) === modalActiveArch);
+    });
+  }
+  updateMediumPillsUI();
+}
+
+function updateMediumPillsUI() {
+  if (!DOM.patchArchPills) return;
+  DOM.patchArchPills.querySelectorAll(".patch-medium-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.medium === modalActiveMedium);
+  });
 }
 
 function filterAppliedPatchesList(query) {
@@ -1730,8 +1917,14 @@ function filterAppliedPatchesList(query) {
     return;
   }
 
+  // Medium pill narrows the list to the patches that medium alone carries.
+  const mediumList = modalActiveMedium !== "all" && activePatchMedia
+    ? activePatchMedia[modalActiveMedium]
+    : null;
+  const source = mediumList || activeAppliedPatchesList;
+
   const normalized = (query || "").toLowerCase().trim();
-  const filtered = activeAppliedPatchesList.filter((p) =>
+  const filtered = source.filter((p) =>
     p.toLowerCase().includes(normalized)
   );
 
@@ -1984,6 +2177,14 @@ function getFileType(filename) {
   if (lower.endsWith(".apk")) return "APK";
   if (lower.endsWith(".zip")) return "Module";
   return "File";
+}
+
+// Delivery medium of a patched asset: "module" for the Magisk/KSU ZIP, "apk"
+// for everything else. Asset-level patchSetRefs are keyed per medium, so the
+// applied-patches view can split an APK's list from its module twin.
+function getAssetMedium(asset) {
+  const name = (asset && asset.name ? asset.name : "").toLowerCase();
+  return name.endsWith(".zip") ? "module" : "apk";
 }
 
 function capitalizeArch(arch) {

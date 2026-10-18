@@ -1731,6 +1731,38 @@ body.light-mode .download-btn {
     border-color: var(--accent);
 }
 
+/* Applied Patches filter band: arch pills, a divider, then APK/Module pills —
+   shown only when that dimension's patch sets actually differ. */
+.patch-filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+}
+
+.patch-filter-pills .filter-group-divider {
+    height: 22px;
+    margin: 0 2px;
+}
+
+.patch-medium-btn,
+.patch-arch-btn {
+    padding: 4px 12px;
+    font-size: 0.74rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.patch-medium-btn .medium-count {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    opacity: 0.75;
+}
+
 .applied-patches-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

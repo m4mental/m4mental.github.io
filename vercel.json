@@ -1,0 +1,70 @@
+{
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "buildCommand": "mkdir -p dist && cp index.html style.css script.js data.json social-preview.svg dist/",
+    "outputDirectory": "dist",
+    "headers": [
+        {
+            "source": "/",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, must-revalidate"
+                }
+            ]
+        },
+        {
+            "source": "/index.html",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, must-revalidate"
+                }
+            ]
+        },
+        {
+            "source": "/data.json",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, s-maxage=300, stale-while-revalidate=600"
+                }
+            ]
+        },
+        {
+            "source": "/script.js",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=600"
+                }
+            ]
+        },
+        {
+            "source": "/style.css",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=600"
+                }
+            ]
+        },
+        {
+            "source": "/social-preview.svg",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=600"
+                }
+            ]
+        },
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "X-Robots-Tag",
+                    "value": "noindex"
+                }
+            ]
+        }
+    ]
+}
