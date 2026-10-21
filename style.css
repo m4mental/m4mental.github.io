@@ -849,6 +849,14 @@ main {
     opacity: 0.85;
 }
 
+/* Trailing glyphs in header dropdown items (external-link / copy) — matched size + weight */
+.dropdown-link-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
 .patch-stat-badge {
     display: inline-flex;
     align-items: center;

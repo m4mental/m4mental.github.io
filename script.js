@@ -81,12 +81,13 @@ const CONFIG = {
     ],
     "donate": [
       { "label": "Patreon", "url": "https://www.patreon.com/cw/fahim_ahmed" },
-      { "label": "Skrill", "url": "https://skrill.me/rq/Fahim/5/USD?key=YPLEz71Jl8tmjGe9YjkvwAgpebX" },
+      { "label": "Skrill", "copy": "fahim.ahmed1453@gmail.com", "copyMessage": "Skrill email copied!" },
       { "label": "Pathao Pay", "url": "https://pathaopay.me/@fahim.ahmed" }
     ],
     "telegram": [
       { "label": "Telegram Group", "url": "https://t.me/m4mental storetg" },
-      { "label": "Telegram Channel", "url": "https://t.me/m4mental store_updates" }
+      { "label": "Telegram Channel", "url": "https://t.me/m4mental store_updates" },
+      { "label": "Discord Server", "url": "https://discord.gg/d4VHpybpQq" }
     ],
     "theme": [
       { "label": "System", "action": "system" },
@@ -116,6 +117,16 @@ const SORT_OPTIONS = [
 // Shared "external link" arrow used on link buttons (dropdown items, patch links)
 const EXTERNAL_LINK_ARROW =
   '<svg class="patch-link-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>';
+
+// Dropdown-scoped glyphs, sized to match each other via .dropdown-link-icon in style.css.
+// Uses the SAME arrow glyph as the rest of the site (EXTERNAL_LINK_ARROW), just at the
+// matched dropdown size — no redesign of the icon itself.
+const EXTERNAL_LINK_ICON =
+  '<svg class="dropdown-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>';
+const COPY_ICON =
+  '<svg class="dropdown-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+const COPIED_CHECK_ICON =
+  '<svg class="dropdown-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 
 // Cached DOM references
 const DOM = {};
@@ -589,7 +600,7 @@ function setupHeaderMenus() {
   (DOM.headerMenus || []).forEach(({ key, wrap, trigger, menu }) => {
     if (!trigger || !menu) return;
 
-    // Build items from CONFIG.links: url → external link, action → in-page button
+    // Build items from CONFIG.links: url → external link, copy → clipboard button, action → in-page button
     menu.replaceChildren(
       ...(CONFIG.links[key] || []).map((item) => {
         const makeItem = (tag) => {
@@ -600,6 +611,15 @@ function setupHeaderMenus() {
           label.textContent = item.label;
           el.appendChild(label);
           return el;
+        };
+
+        // Trailing icon (external-link arrow / copy glyph) pushed to the right by the flex label
+        const appendTrailingIcon = (el, svg) => {
+          const icon = document.createElement("span");
+          icon.className = "dropdown-item-icon";
+          icon.innerHTML = svg;
+          el.appendChild(icon);
+          return icon;
         };
 
         if (item.action) {
@@ -618,10 +638,30 @@ function setupHeaderMenus() {
           });
           return btn;
         }
+
+        // Clipboard entry (e.g. Skrill email): copy icon, flashes a check on success, no navigation
+        if (item.copy) {
+          const btn = makeItem("button");
+          btn.type = "button";
+          btn.title = `Copy ${item.copy}`;
+          const icon = appendTrailingIcon(btn, COPY_ICON);
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            copyToClipboard(item.copy, item.copyMessage || `${item.label} copied!`);
+            icon.innerHTML = COPIED_CHECK_ICON;
+            clearTimeout(icon._restoreTimer);
+            icon._restoreTimer = setTimeout(() => {
+              icon.innerHTML = COPY_ICON;
+            }, 1400);
+          });
+          return btn;
+        }
+
         const a = makeItem("a");
         a.href = item.url;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
+        appendTrailingIcon(a, EXTERNAL_LINK_ICON);
         return a;
       })
     );
