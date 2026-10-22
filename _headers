@@ -1,0 +1,28 @@
+# Cloudflare response headers for the nullstore mirror -- the equivalent of the
+# "headers" block in vercel.json, kept in lockstep with it. Copied into the root
+# of the assets directory (dist/) by the build in wrangler.jsonc; Cloudflare
+# consumes this file and never serves it.
+#
+# noindex on everything: this is a fallback for nullcpy.github.io, and it must
+# never compete with the canonical site in search results.
+
+/*
+  X-Robots-Tag: noindex
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/data.json
+  Cache-Control: public, max-age=0, s-maxage=300, stale-while-revalidate=600
+
+/script.js
+  Cache-Control: public, max-age=600
+
+/style.css
+  Cache-Control: public, max-age=600
+
+/social-preview.svg
+  Cache-Control: public, max-age=600

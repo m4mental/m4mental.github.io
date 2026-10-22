@@ -1,0 +1,24 @@
+{
+    // Cloudflare Workers (static assets) config for the nullstore mirror.
+    //
+    // Declaring this file is what stops `wrangler deploy` from auto-detecting the
+    // project: without it, the detector sees the vestigial _config.yml, assumes a
+    // Jekyll site, and invents `npx bundle exec jekyll build` into `_site` -- which
+    // fails, because this repo has no build step at all (Pages uploads the raw tree).
+    //
+    // The build command MUST stay in lockstep with vercel.json's buildCommand: same
+    // analytics injection, same five published files. _headers is copied too because
+    // Cloudflare reads it from the root of the assets directory.
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "nullstore",
+    "compatibility_date": "2026-10-22",
+    "build": {
+        "command": "node .github/scripts/inject-analytics.mjs && mkdir -p dist && cp index.html style.css script.js data.json social-preview.svg _headers dist/"
+    },
+    // No "main": pure static assets, so nothing is ever invoked as a Worker and no
+    // Workers runtime request quota is consumed. No "observability" either -- there
+    // is no code to trace.
+    "assets": {
+        "directory": "./dist"
+    }
+}
