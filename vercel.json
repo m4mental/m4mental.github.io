@@ -1,6 +1,6 @@
 {
     "$schema": "https://openapi.vercel.sh/vercel.json",
-    "buildCommand": "mkdir -p dist && cp index.html style.css script.js data.json social-preview.svg dist/",
+    "buildCommand": "node .github/scripts/inject-analytics.mjs && mkdir -p dist && cp index.html style.css script.js data.json social-preview.svg dist/",
     "outputDirectory": "dist",
     "headers": [
         {
