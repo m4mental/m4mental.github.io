@@ -77,7 +77,8 @@ const CONFIG = {
     "github": [
       { "label": "Builder Repo", "url": "https://github.com/m4mental/my-rvb-builder" },
       { "label": "Website Repo", "url": "https://github.com/nullcpy/m4mental.github.io" },
-      { "label": "Report an issue", "url": "https://github.com/m4mental/my-rvb-builder/issues/new/choose" }
+      { "label": "Build Archive", "url": "https://m4mental.github.io/archive" },
+      { "label": "Report an Issue", "url": "https://github.com/m4mental/my-rvb-builder/issues/new/choose" }
     ],
     "donate": [
       { "label": "Patreon", "url": "https://www.patreon.com/cw/fahim_ahmed" },
